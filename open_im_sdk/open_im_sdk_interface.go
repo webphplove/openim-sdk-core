@@ -289,6 +289,15 @@ func SetGroupInfo(callback open_im_sdk_callback.Base, operationID string, groupI
 	userForSDK.Group().SetGroupInfo(callback, groupInfo, groupID, operationID)
 }
 
+func SetGroupVerification(callback open_im_sdk_callback.Base, operationID string, groupID string, verification int32) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Group().SetGroupVerification(callback, verification, groupID, operationID)
+}
+
 func GetGroupMemberList(callback open_im_sdk_callback.Base, operationID string, groupID string, filter, offset, count int32) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -298,13 +307,13 @@ func GetGroupMemberList(callback open_im_sdk_callback.Base, operationID string, 
 	userForSDK.Group().GetGroupMemberList(callback, groupID, filter, offset, count, operationID)
 }
 
-func GetGroupMemberListByJoinTimeFilter(callback open_im_sdk_callback.Base, operationID string, groupID string, offset, count int32, joinTimeBegin, joinTimeEnd int64, filterUserID string) {
+func GetGroupMemberListByJoinTimeFilter(callback open_im_sdk_callback.Base, operationID string, groupID string, offset, count int32, joinTimeBegin, joinTimeEnd int64, filterUserIDList string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
 		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
 		return
 	}
-	userForSDK.Group().GetGroupMemberListByJoinTimeFilter(callback, groupID, offset, count, joinTimeBegin, joinTimeEnd, filterUserID, operationID)
+	userForSDK.Group().GetGroupMemberListByJoinTimeFilter(callback, groupID, offset, count, joinTimeBegin, joinTimeEnd, filterUserIDList, operationID)
 }
 
 func GetGroupMembersInfo(callback open_im_sdk_callback.Base, operationID string, groupID string, userIDList string) {
@@ -821,11 +830,7 @@ func MarkGroupMessageAsRead(callback open_im_sdk_callback.Base, operationID stri
 		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
 		return
 	}
-	if userForSDK.AdvancedFunction() == nil {
-		callback.OnError(constant.ErrNotSupportFunction.ErrCode, constant.ErrNotSupportFunction.ErrMsg)
-
-	}
-	userForSDK.AdvancedFunction().MarkGroupMessageAsRead(callback, groupID, msgIDList, operationID)
+	userForSDK.Conversation().MarkGroupMessageAsRead(callback, groupID, msgIDList, operationID)
 }
 
 func DeleteMessageFromLocalStorage(callback open_im_sdk_callback.Base, operationID string, message string) {

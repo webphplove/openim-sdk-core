@@ -2,7 +2,6 @@ package group
 
 import (
 	"errors"
-	"fmt"
 	comm "open_im_sdk/internal/common"
 	ws "open_im_sdk/internal/interaction"
 	"open_im_sdk/open_im_sdk_callback"
@@ -325,7 +324,7 @@ func (g *Group) quitGroup(groupID string, callback open_im_sdk_callback.Base, op
 	apiReq.OperationID = operationID
 	apiReq.GroupID = groupID
 	g.p.PostFatalCallback(callback, constant.QuitGroupRouter, apiReq, nil, apiReq.OperationID)
-	//g.syncGroupMemberByGroupID(groupID, operationID, false) //todo
+	//	g.syncGroupMemberByGroupID(groupID, operationID, false) //todo
 	g.SyncJoinedGroupList(operationID)
 }
 
@@ -449,6 +448,7 @@ func (g *Group) getGroupsInfo(groupIDList sdk.GetGroupsInfoParam, callback open_
 	}
 	if len(notInDB) > 0 {
 		groupsInfoSvr, err := g.getGroupsInfoFromSvr(notInDB, operationID)
+		log.Info(operationID, "getGroupsInfoFromSvr groupsInfoSvr", groupsInfoSvr)
 		common.CheckArgsErrCallback(callback, err, operationID)
 		transfer := common.TransferToLocalGroupInfo(groupsInfoSvr)
 		result = append(result, transfer...)
@@ -478,7 +478,8 @@ func (g *Group) setGroupInfo(callback open_im_sdk_callback.Base, groupInfo sdk.S
 	apiReq.Ex = groupInfo.Ex
 	apiReq.OperationID = operationID
 	apiReq.GroupID = groupID
-	fmt.Println("setgroup : ", apiReq)
+	apiReq.NeedVerification = groupInfo.NeedVerification
+	log.NewInfo(operationID, utils.GetSelfFuncName(), "args: ", groupInfo, groupID)
 	g.p.PostFatalCallback(callback, constant.SetGroupInfoRouter, apiReq, nil, apiReq.OperationID)
 	g.SyncJoinedGroupList(operationID)
 }
@@ -765,6 +766,18 @@ func (g *Group) SyncAdminGroupApplication(operationID string) {
 	}
 }
 
+//func transferGroupInfo(input []*api.GroupInfo) []*api.GroupInfo{
+//	var result []*api.GroupInfo
+//	for _, v := range input {
+//		t := &api.GroupInfo{}
+//		copier.Copy(t, &v)
+//		if v.NeedVerification != nil {
+//			t.NeedVerification = v.NeedVerification.Value
+//		}
+//		result = append(result, t)
+//	}
+//	return result
+//}
 func (g *Group) SyncJoinedGroupList(operationID string) {
 	log.NewInfo(operationID, utils.GetSelfFuncName(), "args: ")
 	svrList, err := g.getJoinedGroupListFromSvr(operationID)
@@ -812,6 +825,7 @@ func (g *Group) SyncJoinedGroupList(operationID string) {
 			log.NewError(operationID, "DeleteGroup failed ", err.Error(), onLocal[index].GroupID)
 			continue
 		}
+		g.db.DeleteGroupAllMembers(onLocal[index].GroupID)
 		callbackData := sdk.JoinedGroupDeletedCallback(*onLocal[index])
 		g.listener.OnJoinedGroupDeleted(utils.StructToJsonString(callbackData))
 		log.Info(operationID, "OnJoinedGroupDeleted", utils.StructToJsonString(callbackData))
