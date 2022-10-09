@@ -52,7 +52,8 @@ func main() {
 		fallthrough
 	case "windows":
 		ws_local_server.InitServer(&sdk_struct.IMConfig{ApiAddr: *openIMApiAddress,
-			WsAddr: *openIMWsAddress, Platform: utils.WebPlatformID, DataDir: *openIMDbDir, LogLevel: uint32(*logLevel)})
+			WsAddr: *openIMWsAddress, Platform: utils.WebPlatformID,
+			DataDir: *openIMDbDir, LogLevel: uint32(*logLevel), IsNeedEncryption: true})
 	default:
 		fmt.Println("this os not support", sysType)
 
