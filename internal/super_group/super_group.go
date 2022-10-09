@@ -2,6 +2,7 @@ package super_group
 
 import (
 	"errors"
+	"github.com/golang/protobuf/proto"
 	ws "open_im_sdk/internal/interaction"
 	"open_im_sdk/pkg/common"
 	"open_im_sdk/pkg/constant"
@@ -33,7 +34,7 @@ func NewSuperGroup(loginUserID string, db *db.DataBase, p *ws.PostApi, joinedSup
 func (s *SuperGroup) DoNotification(msg *api.MsgData, _ chan common.Cmd2Value) {
 	operationID := utils.OperationIDGenerator()
 	log.NewInfo(operationID, utils.GetSelfFuncName(), "args: ", msg.ClientMsgID, msg.ServerMsgID, msg.String())
-	if msg.SendTime < s.loginTime {
+	if msg.SendTime < s.loginTime || s.loginTime == 0 {
 		log.Warn(operationID, "ignore notification ", msg.ClientMsgID, msg.ServerMsgID, msg.Seq, msg.ContentType)
 		return
 	}
@@ -41,6 +42,16 @@ func (s *SuperGroup) DoNotification(msg *api.MsgData, _ chan common.Cmd2Value) {
 		switch msg.ContentType {
 		case constant.SuperGroupUpdateNotification:
 			s.SyncJoinedGroupList(operationID)
+			//
+			//groupIDList, err := s.db.GetReadDiffusionGroupIDList()
+			//if err != nil {
+			//	log.Error(operationID, "GetReadDiffusionGroupIDList failed ", err.Error())
+			//	return
+			//}
+			//for _, v := range groupIDList {
+			//	s.keyMsg.UpdateKeyFromSvr("", v, operationID)
+			//}
+
 			cmd := sdk_struct.CmdJoinedSuperGroup{OperationID: operationID}
 			err := common.TriggerCmdJoinedSuperGroup(cmd, s.joinedSuperGroupCh)
 			if err != nil {
@@ -53,6 +64,15 @@ func (s *SuperGroup) DoNotification(msg *api.MsgData, _ chan common.Cmd2Value) {
 			}
 
 			log.Info(operationID, "constant.SuperGroupUpdateNotification", msg.String())
+
+		case constant.MsgDeleteNotification:
+			var tips api.TipsComm
+			var elem api.MsgDeleteNotificationElem
+			_ = proto.Unmarshal(msg.Content, &tips)
+			_ = utils.JsonStringToStruct(tips.JsonDetail, &elem)
+			//if elem.GroupID != nil {
+			//
+			//}
 		default:
 			log.Error(operationID, "ContentType tip failed ", msg.ContentType)
 		}
@@ -107,7 +127,7 @@ func (s *SuperGroup) getGroupsInfoFromSvr(groupIDList []string, operationID stri
 func (s *SuperGroup) GetJoinedGroupIDListFromSvr(operationID string) ([]string, error) {
 	result, err := s.getJoinedGroupListFromSvr(operationID)
 	if err != nil {
-		return nil, utils.Wrap(err, "")
+		return nil, utils.Wrap(err, "SuperGroup get err")
 	}
 	var groupIDList []string
 	for _, v := range result {

@@ -364,24 +364,31 @@ type TempCacheLocalChatLog struct {
 //  PRIMARY KEY (conversation_id)
 //)
 type LocalConversation struct {
-	ConversationID    string `gorm:"column:conversation_id;primary_key;type:char(128)" json:"conversationID"`
-	ConversationType  int32  `gorm:"column:conversation_type" json:"conversationType"`
-	UserID            string `gorm:"column:user_id;type:char(64)" json:"userID"`
-	GroupID           string `gorm:"column:group_id;type:char(128)" json:"groupID"`
-	ShowName          string `gorm:"column:show_name;type:varchar(255)" json:"showName"`
-	FaceURL           string `gorm:"column:face_url;type:varchar(255)" json:"faceURL"`
-	RecvMsgOpt        int32  `gorm:"column:recv_msg_opt" json:"recvMsgOpt"`
-	UnreadCount       int32  `gorm:"column:unread_count" json:"unreadCount"`
-	GroupAtType       int32  `gorm:"column:group_at_type" json:"groupAtType"`
-	LatestMsg         string `gorm:"column:latest_msg;type:varchar(1000)" json:"latestMsg"`
-	LatestMsgSendTime int64  `gorm:"column:latest_msg_send_time;index:index_latest_msg_send_time" json:"latestMsgSendTime"`
-	DraftText         string `gorm:"column:draft_text" json:"draftText"`
-	DraftTextTime     int64  `gorm:"column:draft_text_time" json:"draftTextTime"`
-	IsPinned          bool   `gorm:"column:is_pinned" json:"isPinned"`
-	IsPrivateChat     bool   `gorm:"column:is_private_chat" json:"isPrivateChat"`
-	IsNotInGroup      bool   `gorm:"column:is_not_in_group" json:"isNotInGroup"`
-	AttachedInfo      string `gorm:"column:attached_info;type:varchar(1024)" json:"attachedInfo"`
-	Ex                string `gorm:"column:ex;type:varchar(1024)" json:"ex"`
+	ConversationID        string `gorm:"column:conversation_id;primary_key;type:char(128)" json:"conversationID"`
+	ConversationType      int32  `gorm:"column:conversation_type" json:"conversationType"`
+	UserID                string `gorm:"column:user_id;type:char(64)" json:"userID"`
+	GroupID               string `gorm:"column:group_id;type:char(128)" json:"groupID"`
+	ShowName              string `gorm:"column:show_name;type:varchar(255)" json:"showName"`
+	FaceURL               string `gorm:"column:face_url;type:varchar(255)" json:"faceURL"`
+	RecvMsgOpt            int32  `gorm:"column:recv_msg_opt" json:"recvMsgOpt"`
+	UnreadCount           int32  `gorm:"column:unread_count" json:"unreadCount"`
+	GroupAtType           int32  `gorm:"column:group_at_type" json:"groupAtType"`
+	LatestMsg             string `gorm:"column:latest_msg;type:varchar(1000)" json:"latestMsg"`
+	LatestMsgSendTime     int64  `gorm:"column:latest_msg_send_time;index:index_latest_msg_send_time" json:"latestMsgSendTime"`
+	DraftText             string `gorm:"column:draft_text" json:"draftText"`
+	DraftTextTime         int64  `gorm:"column:draft_text_time" json:"draftTextTime"`
+	IsPinned              bool   `gorm:"column:is_pinned" json:"isPinned"`
+	IsPrivateChat         bool   `gorm:"column:is_private_chat" json:"isPrivateChat"`
+	IsNotInGroup          bool   `gorm:"column:is_not_in_group" json:"isNotInGroup"`
+	UpdateUnreadCountTime int64  `gorm:"column:update_unread_count_time" json:"updateUnreadCountTime"`
+	AttachedInfo          string `gorm:"column:attached_info;type:varchar(1024)" json:"attachedInfo"`
+	Ex                    string `gorm:"column:ex;type:varchar(1024)" json:"ex"`
+}
+type LocalConversationUnreadMessage struct {
+	ConversationID string `gorm:"column:conversation_id;primary_key;type:char(128)" json:"conversationID"`
+	ClientMsgID    string `gorm:"column:client_msg_id;primary_key;type:char(64)" json:"clientMsgID"`
+	SendTime       int64  `gorm:"column:send_time" json:"sendTime"`
+	Ex             string `gorm:"column:ex;type:varchar(1024)" json:"ex"`
 }
 
 //message GroupRequest{
@@ -437,4 +444,10 @@ type LocalDepartmentMember struct {
 type SearchDepartmentMemberResult struct {
 	LocalDepartmentMember
 	DepartmentName string `gorm:"column:name;size:256" json:"departmentName"`
+}
+
+type LocalEncryptionKey struct {
+	PrefixedID string `gorm:"column:prefixed_id;primary_key;size:64" json:"prefixedID"`
+	KeyVersion int32  `gorm:"column:key_version;primary_key" json:"keyVersion"`
+	Key        string `gorm:"column:key;size:64" json:"key"`
 }

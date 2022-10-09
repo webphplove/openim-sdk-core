@@ -80,6 +80,11 @@ func (wsRouter *WsFuncRouter) InitSDK(config string, operationID string) {
 func (wsRouter *WsFuncRouter) UnInitSDK() {
 	log.Info("", "UnInitSDK uid: ", wsRouter.uId)
 	open_im_sdk.UserSDKRwLock.Lock()
+	_, ok := open_im_sdk.UserRouterMap[wsRouter.uId]
+	if ok {
+		log.Info("", "delete UserRouterMap uid: ", wsRouter.uId)
+		//*v = login.LoginMgr{}
+	}
 	delete(open_im_sdk.UserRouterMap, wsRouter.uId)
 	log.Info("", "delete UnInitSDK uid: ", wsRouter.uId)
 	open_im_sdk.UserSDKRwLock.Unlock()
@@ -172,4 +177,5 @@ func InitServer(config *sdk_struct.IMConfig) {
 	ConfigSvr = string(data)
 	UserRouteMap = make(map[string]RefRouter, 0)
 	open_im_sdk.InitOnce(config)
+	log.Info("", "InitServer ", ConfigSvr)
 }

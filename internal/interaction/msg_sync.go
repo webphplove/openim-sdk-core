@@ -24,8 +24,10 @@ type MsgSync struct {
 	selfMsgSync *SelfMsgSync
 	//selfMsgSyncLatestModel *SelfMsgSyncLatestModel
 	//superGroupMsgSync *SuperGroupMsgSync
-
+	isSyncFinished            bool
 	readDiffusionGroupMsgSync *ReadDiffusionGroupMsgSync
+
+	keyMsg *KeyMsg
 }
 
 func (m *MsgSync) compareSeq() {
@@ -35,8 +37,16 @@ func (m *MsgSync) compareSeq() {
 }
 
 func (m *MsgSync) doMaxSeq(cmd common.Cmd2Value) {
+	operationID := cmd.Value.(sdk_struct.CmdMaxSeqToMsgSync).OperationID
+	if !m.isSyncFinished {
+		m.readDiffusionGroupMsgSync.TriggerCmdNewMsgCome(nil, operationID, constant.MsgSyncBegin)
+	}
 	m.readDiffusionGroupMsgSync.doMaxSeq(cmd)
 	m.selfMsgSync.doMaxSeq(cmd)
+	if !m.isSyncFinished {
+		m.readDiffusionGroupMsgSync.TriggerCmdNewMsgCome(nil, operationID, constant.MsgSyncEnd)
+	}
+	m.isSyncFinished = true
 }
 
 func (m *MsgSync) doPushMsg(cmd common.Cmd2Value) {
@@ -64,11 +74,13 @@ func (m *MsgSync) GetCh() chan common.Cmd2Value {
 	return m.PushMsgAndMaxSeqCh
 }
 
-func NewMsgSync(dataBase *db.DataBase, ws *Ws, loginUserID string, ch chan common.Cmd2Value, pushMsgAndMaxSeqCh chan common.Cmd2Value, joinedSuperGroupCh chan common.Cmd2Value) *MsgSync {
-	p := &MsgSync{DataBase: dataBase, Ws: ws, LoginUserID: loginUserID, conversationCh: ch, PushMsgAndMaxSeqCh: pushMsgAndMaxSeqCh}
+func NewMsgSync(dataBase *db.DataBase, ws *Ws, loginUserID string, ch chan common.Cmd2Value, pushMsgAndMaxSeqCh chan common.Cmd2Value,
+	joinedSuperGroupCh chan common.Cmd2Value, keyMsg *KeyMsg) *MsgSync {
+	p := &MsgSync{DataBase: dataBase, Ws: ws, LoginUserID: loginUserID, conversationCh: ch, PushMsgAndMaxSeqCh: pushMsgAndMaxSeqCh, keyMsg: keyMsg}
 	//	p.superGroupMsgSync = NewSuperGroupMsgSync(dataBase, ws, loginUserID, ch, joinedSuperGroupCh)
-	p.selfMsgSync = NewSelfMsgSync(dataBase, ws, loginUserID, ch)
-	p.readDiffusionGroupMsgSync = NewReadDiffusionGroupMsgSync(dataBase, ws, loginUserID, ch, joinedSuperGroupCh)
+	//	p.keyMsg = NewKeyMsg(loginUserID, postApi)
+	p.selfMsgSync = NewSelfMsgSync(dataBase, ws, loginUserID, ch, p.keyMsg)
+	p.readDiffusionGroupMsgSync = NewReadDiffusionGroupMsgSync(dataBase, ws, loginUserID, ch, joinedSuperGroupCh, p.keyMsg)
 	//	p.selfMsgSync = NewSelfMsgSyncLatestModel(dataBase, ws, loginUserID, ch)
 	p.compareSeq()
 	go common.DoListener(p)

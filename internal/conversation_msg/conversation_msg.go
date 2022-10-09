@@ -11,7 +11,7 @@ import (
 	"open_im_sdk/internal/organization"
 	"open_im_sdk/internal/signaling"
 	"open_im_sdk/internal/user"
-	"open_im_sdk/internal/work_moments"
+	workMoments "open_im_sdk/internal/work_moments"
 	"open_im_sdk/open_im_sdk_callback"
 	"open_im_sdk/pkg/common"
 	"open_im_sdk/pkg/constant"
@@ -23,6 +23,7 @@ import (
 	"open_im_sdk/sdk_struct"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
@@ -54,8 +55,11 @@ type Conversation struct {
 	cache          *cache.Cache
 	full           *full.Full
 	tempMessageMap sync.Map
+	encryptionKey  string
 
 	id2MinSeq map[string]uint32
+
+	keyMsg *ws.KeyMsg
 }
 
 //func (c *Conversation) SetAdvancedFunction(advancedFunction advanced_interface.AdvancedFunction) {
@@ -79,15 +83,15 @@ func (c *Conversation) SetBatchMsgListener(batchMsgListener open_im_sdk_callback
 }
 
 func NewConversation(ws *ws.Ws, db *db.DataBase, p *ws.PostApi,
-	ch chan common.Cmd2Value, loginUserID string, platformID int32, dataDir string,
+	ch chan common.Cmd2Value, loginUserID string, platformID int32, dataDir, encryptionKey string,
 	friend *friend.Friend, group *group.Group, user *user.User,
 	objectStorage common2.ObjectStorage, conversationListener open_im_sdk_callback.OnConversationListener,
 	msgListener open_im_sdk_callback.OnAdvancedMsgListener, organization *organization.Organization, signaling *signaling.LiveSignaling,
-	workMoments *workMoments.WorkMoments, cache *cache.Cache, full *full.Full, id2MinSeq map[string]uint32) *Conversation {
+	workMoments *workMoments.WorkMoments, cache *cache.Cache, full *full.Full, id2MinSeq map[string]uint32, keyMsg *ws.KeyMsg) *Conversation {
 	n := &Conversation{Ws: ws, db: db, p: p, recvCH: ch, loginUserID: loginUserID, platformID: platformID,
 		DataDir: dataDir, friend: friend, group: group, user: user, ObjectStorage: objectStorage,
 		signaling: signaling, organization: organization, workMoments: workMoments,
-		full: full, id2MinSeq: id2MinSeq}
+		full: full, id2MinSeq: id2MinSeq, encryptionKey: encryptionKey, keyMsg: keyMsg}
 	n.SetMsgListener(msgListener)
 	n.SetConversationListener(conversationListener)
 	n.cache = cache
@@ -100,13 +104,33 @@ func (c *Conversation) GetCh() chan common.Cmd2Value {
 func (c *Conversation) doMsgNew(c2v common.Cmd2Value) {
 	operationID := c2v.Value.(sdk_struct.CmdNewMsgComeToConversation).OperationID
 	allMsg := c2v.Value.(sdk_struct.CmdNewMsgComeToConversation).MsgList
+	syncFlag := c2v.Value.(sdk_struct.CmdNewMsgComeToConversation).SyncFlag
+	if c.msgListener == nil || c.ConversationListener == nil {
+		for _, v := range allMsg {
+			if v.ContentType > constant.SignalingNotificationBegin && v.ContentType < constant.SignalingNotificationEnd {
+				log.Info(operationID, "signaling DoNotification ", v, "signaling:", c.signaling)
+				c.signaling.DoNotification(v, c.GetCh(), operationID)
+			} else {
+				log.Info(operationID, "listener is nil, do nothing ", v)
+			}
+		}
+	}
 	if c.msgListener == nil {
 		log.Error(operationID, "not set c MsgListenerList")
 		return
 	}
+	if c.ConversationListener == nil {
+		log.Error(operationID, "not set c ConversationListener")
+		return
+	}
+	if syncFlag == constant.MsgSyncBegin {
+		c.ConversationListener.OnSyncServerStart()
+	}
+
 	var isTriggerUnReadCount bool
 	var insertMsg, updateMsg []*model_struct.LocalChatLog
 	var exceptionMsg []*model_struct.LocalErrChatLog
+	var unreadMessages []*model_struct.LocalConversationUnreadMessage
 	var newMessages, msgReadList, groupMsgReadList, msgRevokeList, newMsgRevokeList sdk_struct.NewMsgList
 	var isUnreadCount, isConversationUpdate, isHistory, isNotPrivate, isSenderConversationUpdate, isSenderNotificationPush bool
 	conversationChangedSet := make(map[string]*model_struct.LocalConversation)
@@ -114,8 +138,8 @@ func (c *Conversation) doMsgNew(c2v common.Cmd2Value) {
 	conversationSet := make(map[string]*model_struct.LocalConversation)
 	phConversationChangedSet := make(map[string]*model_struct.LocalConversation)
 	phNewConversationSet := make(map[string]*model_struct.LocalConversation)
-	log.Info(operationID, "do Msg come here, len: ", len(allMsg))
-	b := utils.GetCurrentTimestampByMill()
+	log.Info(operationID, "do Msg come here, len: ", len(allMsg), len(c.GetCh()))
+	b := time.Now()
 
 	for _, v := range allMsg {
 		log.Info(operationID, "do Msg come here, msg detail ", v.RecvID, v.SendID, v.ClientMsgID, v.ServerMsgID, v.Seq, c.loginUserID)
@@ -169,8 +193,18 @@ func (c *Conversation) doMsgNew(c2v common.Cmd2Value) {
 		case v.ContentType == constant.ConversationChangeNotification || v.ContentType == constant.ConversationPrivateChatNotification:
 			log.Info(operationID, utils.GetSelfFuncName(), v)
 			c.DoNotification(v)
-		case v.ContentType == constant.SuperGroupUpdateNotification:
+		case v.ContentType == constant.MsgDeleteNotification || v.ContentType == constant.SuperGroupUpdateNotification:
 			c.full.SuperGroup.DoNotification(v, c.GetCh())
+		case v.ContentType == constant.ConversationUnreadNotification:
+			var unreadArgs server_api_params.ConversationUpdateTips
+			_ = proto.Unmarshal(tips.Detail, &unreadArgs)
+			log.Debug(operationID, "ConversationUnreadNotification come here", unreadArgs.String())
+			for _, v := range unreadArgs.ConversationIDList {
+				c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{ConID: v, Action: constant.UnreadCountSetZero}})
+				c.db.DeleteConversationUnreadMessageList(v, unreadArgs.UpdateUnreadCountTime)
+			}
+			c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{Action: constant.ConChange, Args: unreadArgs.ConversationIDList}})
+			continue
 		}
 		switch v.SessionType {
 		case constant.SingleChatType:
@@ -231,23 +265,12 @@ func (c *Conversation) doMsgNew(c2v common.Cmd2Value) {
 				case constant.SingleChatType:
 					lc.ConversationID = utils.GetConversationIDBySessionType(v.RecvID, constant.SingleChatType)
 					lc.UserID = v.RecvID
-					//localUserInfo,_ := c.user.GetLoginUser()
-					//c.FaceURL = localUserInfo.FaceUrl
-					//c.ShowName = localUserInfo.Nickname
 				case constant.GroupChatType:
 					lc.GroupID = v.GroupID
 					lc.ConversationID = utils.GetConversationIDBySessionType(lc.GroupID, constant.GroupChatType)
 				case constant.SuperGroupChatType:
 					lc.GroupID = v.GroupID
 					lc.ConversationID = utils.GetConversationIDBySessionType(lc.GroupID, constant.SuperGroupChatType)
-					//faceUrl, name, err := u.getGroupNameAndFaceUrlByUid(c.GroupID)
-					//if err != nil {
-					//	utils.sdkLog("getGroupNameAndFaceUrlByUid err:", err)
-					//} else {
-					//	c.ShowName = name
-					//	c.FaceURL = faceUrl
-					//}
-
 				}
 				if isConversationUpdate {
 					if isSenderConversationUpdate {
@@ -305,8 +328,13 @@ func (c *Conversation) doMsgNew(c2v common.Cmd2Value) {
 					lc.UserID = v.SendID
 				}
 				if isUnreadCount {
-					isTriggerUnReadCount = true
-					lc.UnreadCount = 1
+					cacheConversation := c.cache.GetConversation(lc.ConversationID)
+					if msg.SendTime > cacheConversation.UpdateUnreadCountTime {
+						isTriggerUnReadCount = true
+						lc.UnreadCount = 1
+						tempUnreadMessages := model_struct.LocalConversationUnreadMessage{ConversationID: lc.ConversationID, ClientMsgID: msg.ClientMsgID, SendTime: msg.SendTime}
+						unreadMessages = append(unreadMessages, &tempUnreadMessages)
+					}
 				}
 				if isConversationUpdate {
 					c.updateConversation(&lc, conversationSet)
@@ -327,6 +355,14 @@ func (c *Conversation) doMsgNew(c2v common.Cmd2Value) {
 					groupMsgReadList = append(groupMsgReadList, msg)
 				case constant.Typing:
 					newMessages = append(newMessages, msg)
+				case constant.CustomMsgOnlineOnly:
+					newMessages = append(newMessages, msg)
+				case constant.CustomMsgNotTriggerConversation:
+					newMessages = append(newMessages, msg)
+				case constant.OANotification:
+					if !isConversationUpdate {
+						newMessages = append(newMessages, msg)
+					}
 				case constant.AdvancedRevoke:
 					newMsgRevokeList = append(newMsgRevokeList, msg)
 					newMessages = removeElementInList(newMessages, msg)
@@ -341,7 +377,7 @@ func (c *Conversation) doMsgNew(c2v common.Cmd2Value) {
 	}
 	b1 := utils.GetCurrentTimestampByMill()
 	log.Info(operationID, "generate conversation map is :", conversationSet)
-	log.Debug(operationID, "before insert msg cost time : ", b1-b)
+	log.Debug(operationID, "before insert msg cost time : ", time.Since(b))
 
 	list, err := c.db.GetAllConversationList()
 	if err != nil {
@@ -425,7 +461,10 @@ func (c *Conversation) doMsgNew(c2v common.Cmd2Value) {
 	}
 	b7 := utils.GetCurrentTimestampByMill()
 	log.Debug(operationID, "BatchInsertConversationList, cost time : ", b7-b6)
-
+	unreadMessageErr := c.db.BatchInsertConversationUnreadMessageList(unreadMessages)
+	if unreadMessageErr != nil {
+		log.Error(operationID, "insert BatchInsertConversationUnreadMessageList err:", unreadMessageErr.Error())
+	}
 	c.doMsgReadState(msgReadList)
 	b8 := utils.GetCurrentTimestampByMill()
 	log.Debug(operationID, "doMsgReadState  cost time : ", b8-b7)
@@ -450,28 +489,42 @@ func (c *Conversation) doMsgNew(c2v common.Cmd2Value) {
 
 	//log.Info(operationID, "trigger map is :", newConversationSet, conversationChangedSet)
 	if len(newConversationSet) > 0 {
-		c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{"", constant.NewConDirect, utils.StructToJsonString(mapConversationToList(newConversationSet))}})
+		c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{Action: constant.NewConDirect, Args: utils.StructToJsonString(mapConversationToList(newConversationSet))}})
 
 	}
 	if len(conversationChangedSet) > 0 {
-		c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{"", constant.ConChangeDirect, utils.StructToJsonString(mapConversationToList(conversationChangedSet))}})
+		c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{Action: constant.ConChangeDirect, Args: utils.StructToJsonString(mapConversationToList(conversationChangedSet))}})
 	}
 
 	if isTriggerUnReadCount {
-		c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{"", constant.TotalUnreadMessageChanged, ""}})
+		c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{Action: constant.TotalUnreadMessageChanged, Args: ""}})
 	}
-	log.Warn(operationID, "insert msg, total cost time: ", utils.GetCurrentTimestampByMill()-b, "len:  ", len(allMsg))
+	if syncFlag == constant.MsgSyncEnd {
+		c.ConversationListener.OnSyncServerFinish()
+	}
+	log.Debug(operationID, "insert msg, total cost time: ", time.Since(b), "len:  ", len(allMsg))
 }
 func (c *Conversation) doSuperGroupMsgNew(c2v common.Cmd2Value) {
 	operationID := c2v.Value.(sdk_struct.CmdNewMsgComeToConversation).OperationID
 	allMsg := c2v.Value.(sdk_struct.CmdNewMsgComeToConversation).MsgList
+	syncFlag := c2v.Value.(sdk_struct.CmdNewMsgComeToConversation).SyncFlag
+	log.Info(operationID, utils.GetSelfFuncName(), " args ", "syncFlag ", syncFlag)
 	if c.msgListener == nil {
 		log.Error(operationID, "not set c MsgListenerList")
 		return
 	}
+	if c.ConversationListener == nil {
+		log.Error(operationID, "not set c ConversationListener")
+		return
+	}
+	if syncFlag == constant.MsgSyncBegin {
+		log.Info(operationID, "OnSyncServerStart() ")
+		c.ConversationListener.OnSyncServerStart()
+	}
 	var isTriggerUnReadCount bool
 	var insertMsg, updateMsg, specialUpdateMsg []*model_struct.LocalChatLog
 	var exceptionMsg []*model_struct.LocalErrChatLog
+	var unreadMessages []*model_struct.LocalConversationUnreadMessage
 	var newMessages, msgReadList, groupMsgReadList, msgRevokeList, newMsgRevokeList sdk_struct.NewMsgList
 	var isUnreadCount, isConversationUpdate, isHistory, isNotPrivate, isSenderConversationUpdate, isSenderNotificationPush bool
 	conversationChangedSet := make(map[string]*model_struct.LocalConversation)
@@ -536,6 +589,15 @@ func (c *Conversation) doSuperGroupMsgNew(c2v common.Cmd2Value) {
 			c.DoNotification(v)
 		case v.ContentType == constant.SuperGroupUpdateNotification:
 			c.full.SuperGroup.DoNotification(v, c.GetCh())
+		case v.ContentType == constant.ConversationUnreadNotification:
+			var unreadArgs server_api_params.ConversationUpdateTips
+			_ = proto.Unmarshal(tips.Detail, &unreadArgs)
+			for _, v := range unreadArgs.ConversationIDList {
+				c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{ConID: v, Action: constant.UnreadCountSetZero}})
+				c.db.DeleteConversationUnreadMessageList(v, unreadArgs.UpdateUnreadCountTime)
+			}
+			c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{Action: constant.ConChange, Args: unreadArgs.ConversationIDList}})
+			continue
 		}
 		switch v.SessionType {
 		case constant.SingleChatType:
@@ -674,8 +736,13 @@ func (c *Conversation) doSuperGroupMsgNew(c2v common.Cmd2Value) {
 					lc.UserID = v.SendID
 				}
 				if isUnreadCount {
-					isTriggerUnReadCount = true
-					lc.UnreadCount = 1
+					cacheConversation := c.cache.GetConversation(lc.ConversationID)
+					if msg.SendTime > cacheConversation.UpdateUnreadCountTime {
+						isTriggerUnReadCount = true
+						lc.UnreadCount = 1
+						tempUnreadMessages := model_struct.LocalConversationUnreadMessage{ConversationID: lc.ConversationID, ClientMsgID: msg.ClientMsgID, SendTime: msg.SendTime}
+						unreadMessages = append(unreadMessages, &tempUnreadMessages)
+					}
 				}
 				if isConversationUpdate {
 					c.updateConversation(&lc, conversationSet)
@@ -684,7 +751,7 @@ func (c *Conversation) doSuperGroupMsgNew(c2v common.Cmd2Value) {
 					msg.Status = constant.MsgStatusFiltered
 				}
 				if isHistory {
-					log.Warn("test", "trigger msg is ", msg.SenderNickname, msg.SenderFaceURL)
+					log.Debug(operationID, "trigger msg is ", msg.SenderNickname, msg.SenderFaceURL)
 					insertMsg = append(insertMsg, c.msgStructToLocalChatLog(msg))
 				}
 				switch msg.ContentType {
@@ -694,6 +761,14 @@ func (c *Conversation) doSuperGroupMsgNew(c2v common.Cmd2Value) {
 					msgReadList = append(msgReadList, msg)
 				case constant.GroupHasReadReceipt:
 					groupMsgReadList = append(groupMsgReadList, msg)
+				case constant.CustomMsgOnlineOnly:
+					newMessages = append(newMessages, msg)
+				case constant.CustomMsgNotTriggerConversation:
+					newMessages = append(newMessages, msg)
+				case constant.OANotification:
+					if !isConversationUpdate {
+						newMessages = append(newMessages, msg)
+					}
 				case constant.Typing:
 					newMessages = append(newMessages, msg)
 				case constant.AdvancedRevoke:
@@ -802,7 +877,10 @@ func (c *Conversation) doSuperGroupMsgNew(c2v common.Cmd2Value) {
 	}
 	b7 := utils.GetCurrentTimestampByMill()
 	log.Debug(operationID, "BatchInsertConversationList, cost time : ", b7-b6)
-
+	unreadMessageErr := c.db.BatchInsertConversationUnreadMessageList(unreadMessages)
+	if unreadMessageErr != nil {
+		log.Error(operationID, "insert BatchInsertConversationUnreadMessageList err:", unreadMessageErr.Error())
+	}
 	c.doMsgReadState(msgReadList)
 	b8 := utils.GetCurrentTimestampByMill()
 	log.Debug(operationID, "doMsgReadState  cost time : ", b8-b7)
@@ -836,6 +914,10 @@ func (c *Conversation) doSuperGroupMsgNew(c2v common.Cmd2Value) {
 
 	if isTriggerUnReadCount {
 		c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{"", constant.TotalUnreadMessageChanged, ""}})
+	}
+	if syncFlag == constant.MsgSyncEnd {
+		log.Info(operationID, "OnSyncServerFinish() ")
+		c.ConversationListener.OnSyncServerFinish()
 	}
 	log.Info(operationID, "insert msg, total cost time: ", utils.GetCurrentTimestampByMill()-b, "len:  ", len(allMsg))
 }
@@ -953,45 +1035,46 @@ func (c *Conversation) tempCacheChatLog(messageList []*sdk_struct.MsgStruct) {
 func (c *Conversation) newRevokeMessage(msgRevokeList []*sdk_struct.MsgStruct) {
 	var failedRevokeMessageList []*sdk_struct.MsgStruct
 	for _, w := range msgRevokeList {
-		if c.msgListener != nil {
-			var msg sdk_struct.MessageRevoked
-			err := json.Unmarshal([]byte(w.Content), &msg)
-			if err != nil {
-				log.Error("internal", "unmarshal failed, err : ", err.Error(), *w)
-				continue
+		var msg sdk_struct.MessageRevoked
+		err := json.Unmarshal([]byte(w.Content), &msg)
+		if err != nil {
+			log.Error("internal", "unmarshal failed, err : ", err.Error(), *w)
+			continue
+		}
+		t := new(model_struct.LocalChatLog)
+		t.ClientMsgID = msg.ClientMsgID
+		t.Status = constant.MsgStatusRevoked
+		t.SessionType = msg.SessionType
+		t.RecvID = w.GroupID
+		err = c.db.UpdateMessageController(t)
+		if err != nil {
+			log.Error("internal", "setLocalMessageStatus revokeMessage err:", err.Error(), "msg", w)
+			failedRevokeMessageList = append(failedRevokeMessageList, w)
+			switch msg.SessionType {
+			case constant.SuperGroupChatType:
+				err := c.db.InsertMessageController(t)
+				if err != nil {
+					log.Error("internal", "InsertMessageController preDefine Message err:", err.Error(), "msg", *t)
+				}
 			}
+		} else {
 			t := new(model_struct.LocalChatLog)
-			t.ClientMsgID = msg.ClientMsgID
-			t.Status = constant.MsgStatusRevoked
-			t.SessionType = msg.SessionType
+			t.ClientMsgID = w.ClientMsgID
+			t.SendTime = msg.SourceMessageSendTime
+			t.SessionType = w.SessionType
 			t.RecvID = w.GroupID
 			err = c.db.UpdateMessageController(t)
 			if err != nil {
 				log.Error("internal", "setLocalMessageStatus revokeMessage err:", err.Error(), "msg", w)
-				failedRevokeMessageList = append(failedRevokeMessageList, w)
-				switch msg.SessionType {
-				case constant.SuperGroupChatType:
-					err := c.db.InsertMessageController(t)
-					if err != nil {
-						log.Error("internal", "InsertMessageController preDefine Message err:", err.Error(), "msg", *t)
-					}
-				}
-			} else {
-				t := new(model_struct.LocalChatLog)
-				t.ClientMsgID = w.ClientMsgID
-				t.SendTime = msg.SourceMessageSendTime
-				t.SessionType = w.SessionType
-				t.RecvID = w.GroupID
-				err = c.db.UpdateMessageController(t)
-				if err != nil {
-					log.Error("internal", "setLocalMessageStatus revokeMessage err:", err.Error(), "msg", w)
-				}
-				log.Info("internal", "v.OnNewRecvMessageRevoked client_msg_id:", msg.ClientMsgID)
-				c.msgListener.OnNewRecvMessageRevoked(w.Content)
 			}
-		} else {
-			log.Error("internal", "set msgListener is err:")
+			log.Info("internal", "v.OnNewRecvMessageRevoked client_msg_id:", msg.ClientMsgID)
+			if c.msgListener != nil {
+				c.msgListener.OnNewRecvMessageRevoked(w.Content)
+			} else {
+				log.Error("internal", "set msgListener is err:")
+			}
 		}
+
 	}
 	if len(failedRevokeMessageList) > 0 {
 		//c.tempCacheChatLog(failedRevokeMessageList)
@@ -1022,7 +1105,6 @@ func (c *Conversation) DoGroupMsgReadState(groupMsgReadList []*sdk_struct.MsgStr
 			g[rd.GroupID] = list
 			userMsgMap[rd.SendID] = g
 		}
-
 	}
 	for userID, m := range userMsgMap {
 		for groupID, msgIDList := range m {
@@ -1115,7 +1197,6 @@ func (c *Conversation) batchNewMessages(newMessagesList sdk_struct.NewMsgList) {
 	} else {
 		log.Warn("internal", "not set batchMsgListener ")
 	}
-
 }
 func (c *Conversation) doDeleteConversation(c2v common.Cmd2Value) {
 	if c.ConversationListener == nil {
@@ -1139,6 +1220,9 @@ func (c *Conversation) doDeleteConversation(c2v common.Cmd2Value) {
 func (c *Conversation) doMsgReadState(msgReadList []*sdk_struct.MsgStruct) {
 	var messageReceiptResp []*sdk_struct.MessageReceipt
 	var msgIdList []string
+	chrsList := make(map[string][]string)
+	var conversationID string
+
 	for _, rd := range msgReadList {
 		err := json.Unmarshal([]byte(rd.Content), &msgIdList)
 		if err != nil {
@@ -1175,6 +1259,17 @@ func (c *Conversation) doMsgReadState(msgReadList []*sdk_struct.MsgStruct) {
 			msgRt.MsgIDList = msgIdListStatusOK
 			messageReceiptResp = append(messageReceiptResp, msgRt)
 		}
+		if rd.SendID == c.loginUserID {
+			conversationID = utils.GetConversationIDBySessionType(rd.RecvID, constant.SingleChatType)
+		} else {
+			conversationID = utils.GetConversationIDBySessionType(rd.SendID, constant.SingleChatType)
+		}
+		if v, ok := chrsList[conversationID]; ok {
+			chrsList[conversationID] = append(v, msgIdListStatusOK...)
+		} else {
+			chrsList[conversationID] = msgIdListStatusOK
+		}
+		c.doUpdateConversation(common.Cmd2Value{Value: common.UpdateConNode{Action: constant.ConversationLatestMsgHasRead, Args: chrsList}})
 	}
 	if len(messageReceiptResp) > 0 {
 
@@ -1254,16 +1349,16 @@ func (c *Conversation) doUpdateConversation(c2v common.Cmd2Value) {
 		} else {
 			c.ConversationListener.OnTotalUnreadMessageCountChanged(totalUnreadCount)
 		}
-	case constant.UpdateFaceUrlAndNickName:
+	case constant.UpdateConFaceUrlAndNickName:
 		var lc model_struct.LocalConversation
-		st := node.Args.(common.SourceIDAndSessionType)
-		lc.ConversationID = node.ConID
-		lc.ConversationType = st.SessionType
-		if st.SessionType == constant.SingleChatType {
-			lc.UserID = st.SourceID
+		st := node.Args.(common.UpdateConInfo)
+		if st.GroupID == "" {
+			lc.UserID = st.UserID
+			lc.ConversationID = utils.GetConversationIDBySessionType(st.UserID, constant.SingleChatType)
+			lc.ConversationType = constant.SingleChatType
 		} else {
-			lc.GroupID = st.SourceID
-			conversationID, conversationType, err := c.getConversationTypeByGroupID(st.SourceID)
+			lc.GroupID = st.GroupID
+			conversationID, conversationType, err := c.getConversationTypeByGroupID(st.GroupID)
 			if err != nil {
 				log.Error("internal", "getConversationTypeByGroupID database err:", err.Error())
 				return
@@ -1334,7 +1429,58 @@ func (c *Conversation) doUpdateConversation(c2v common.Cmd2Value) {
 		log.Debug("internal", "NewConversation", cidList)
 		c.ConversationListener.OnNewConversation(cidList)
 
+	case constant.ConversationLatestMsgHasRead:
+		hasReadMsgList := node.Args.(map[string][]string)
+		var result []*model_struct.LocalConversation
+		var latestMsg sdk_struct.MsgStruct
+		var lc model_struct.LocalConversation
+		for conversationID, msgIDList := range hasReadMsgList {
+			LocalConversation, err := c.db.GetConversation(conversationID)
+			if err != nil {
+				log.Error("internal", "get conversation err", err.Error(), conversationID)
+				continue
+			}
+			err = utils.JsonStringToStruct(LocalConversation.LatestMsg, &latestMsg)
+			if err != nil {
+				log.Error("internal", "JsonStringToStruct err", err.Error(), conversationID)
+				continue
+			}
+			if utils.IsContain(latestMsg.ClientMsgID, msgIDList) {
+				latestMsg.IsRead = true
+				lc.ConversationID = conversationID
+				lc.LatestMsg = utils.StructToJsonString(latestMsg)
+				LocalConversation.LatestMsg = utils.StructToJsonString(latestMsg)
+				err := c.db.UpdateConversation(&lc)
+				if err != nil {
+					log.Error("internal", "UpdateConversation database err:", err.Error())
+					continue
+				} else {
+					result = append(result, LocalConversation)
+				}
+			}
+		}
+		if result != nil {
+			log.Info("internal", "getMultipleConversationModel success :", result)
+			c.ConversationListener.OnNewConversation(utils.StructToJsonString(result))
+		}
+
 	}
+}
+func (c *Conversation) doUpdateMessage(c2v common.Cmd2Value) {
+	if c.ConversationListener == nil {
+		log.Error("internal", "not set conversationListener")
+		return
+	}
+	node := c2v.Value.(common.UpdateMessageNode)
+	switch node.Action {
+	case constant.UpdateMsgFaceUrlAndNickName:
+		args := node.Args.(common.UpdateMessageInfo)
+		err := c.db.UpdateMsgSenderFaceURLAndSenderNickname(args.UserID, args.FaceURL, args.Nickname, constant.SingleChatType)
+		if err != nil {
+			log.Error("internal", "UpdateMsgSenderFaceURLAndSenderNickname err:", err.Error())
+		}
+	}
+
 }
 
 func (c *Conversation) Work(c2v common.Cmd2Value) {
@@ -1358,6 +1504,10 @@ func (c *Conversation) Work(c2v common.Cmd2Value) {
 		log.Info("internal", "doUpdateConversation start ..", c2v.Cmd)
 		c.doUpdateConversation(c2v)
 		log.Info("internal", "doUpdateConversation end..", c2v.Cmd)
+	case constant.CmdUpdateMessage:
+		log.Info("internal", "doUpdateMessage start ..", c2v.Cmd)
+		c.doUpdateMessage(c2v)
+		log.Info("internal", "doUpdateMessage end..", c2v.Cmd)
 	}
 }
 func (c *Conversation) msgConvert(msg *sdk_struct.MsgStruct) (err error) {
@@ -1380,10 +1530,17 @@ func (c *Conversation) msgHandleByContentType(msg *sdk_struct.MsgStruct) (err er
 		err = utils.JsonStringToStruct(msg.Content, &tips)
 		msg.NotificationElem.Detail = tips.JsonDetail
 		msg.NotificationElem.DefaultTips = tips.DefaultTips
-
 	} else {
 		switch msg.ContentType {
 		case constant.Text:
+			if msg.AttachedInfoElem.IsEncryption && c.encryptionKey != "" && msg.AttachedInfoElem.InEncryptStatus {
+				var newContent []byte
+				log.NewDebug("", utils.GetSelfFuncName(), "org content, key", msg.Content, c.encryptionKey, []byte(msg.Content), msg.CreateTime, msg.AttachedInfoElem, msg.AttachedInfo)
+				newContent, err = utils.AesDecrypt([]byte(msg.Content), []byte(c.encryptionKey))
+				msg.Content = string(newContent)
+				msg.AttachedInfoElem.InEncryptStatus = false
+				msg.AttachedInfo = utils.StructToJsonString(msg.AttachedInfoElem)
+			}
 		case constant.Picture:
 			err = utils.JsonStringToStruct(msg.Content, &msg.PictureElem)
 		case constant.Voice:

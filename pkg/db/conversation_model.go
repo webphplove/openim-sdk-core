@@ -87,8 +87,6 @@ func (d *DataBase) DeleteConversation(conversationID string) error {
 }
 
 func (d *DataBase) GetConversation(conversationID string) (*model_struct.LocalConversation, error) {
-	d.mRWMutex.Lock()
-	defer d.mRWMutex.Unlock()
 	var c model_struct.LocalConversation
 	return &c, utils.Wrap(d.conn.Where("conversation_id = ?",
 		conversationID).Take(&c).Error, "GetConversation failed")
@@ -108,7 +106,9 @@ func (d *DataBase) UpdateConversation(c *model_struct.LocalConversation) error {
 func (d *DataBase) UpdateConversationForSync(c *model_struct.LocalConversation) error {
 	d.mRWMutex.Lock()
 	defer d.mRWMutex.Unlock()
-	t := d.conn.Model(&model_struct.LocalConversation{}).Where("conversation_id = ?", c.ConversationID).Updates(map[string]interface{}{"recv_msg_opt": c.RecvMsgOpt, "is_pinned": c.IsPinned, "is_private_chat": c.IsPrivateChat, "group_at_type": c.GroupAtType, "is_not_in_group": c.IsNotInGroup, "ex": c.Ex, "attached_info": c.AttachedInfo, "unread_count": c.UnreadCount})
+	t := d.conn.Model(&model_struct.LocalConversation{}).Where("conversation_id = ?", c.ConversationID).
+		Updates(map[string]interface{}{"recv_msg_opt": c.RecvMsgOpt, "is_pinned": c.IsPinned, "is_private_chat": c.IsPrivateChat,
+			"group_at_type": c.GroupAtType, "is_not_in_group": c.IsNotInGroup, "update_unread_count_time": c.UpdateUnreadCountTime, "ex": c.Ex, "attached_info": c.AttachedInfo})
 	if t.RowsAffected == 0 {
 		return utils.Wrap(errors.New("RowsAffected == 0"), "no update")
 	}
@@ -292,4 +292,25 @@ func (d *DataBase) GetMultipleConversation(conversationIDList []string) (result 
 		result = append(result, &v1)
 	}
 	return result, err
+}
+func (d *DataBase) DecrConversationUnreadCount(conversationID string, count int64) (err error) {
+	d.mRWMutex.Lock()
+	defer d.mRWMutex.Unlock()
+	tx := d.conn.Begin()
+	c := model_struct.LocalConversation{ConversationID: conversationID}
+	t := d.conn.Debug().Model(&c).Update("unread_count", gorm.Expr("unread_count-?", count))
+	if t.Error != nil {
+		return utils.Wrap(errors.New("RowsAffected == 0"), "no update")
+	}
+	if err := d.conn.Where("conversation_id = ?",
+		conversationID).Take(&c).Error; err != nil {
+		tx.Rollback()
+		return utils.Wrap(errors.New("get conversation err"), "")
+	}
+	if c.UnreadCount < 0 {
+		tx.Rollback()
+		return utils.Wrap(errors.New("decr unread count < 0"), "")
+	}
+	tx.Commit()
+	return nil
 }

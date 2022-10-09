@@ -19,10 +19,12 @@ type SelfMsgSync struct {
 	seqMaxSynchronized uint32
 	seqMaxNeedSync     uint32 //max seq in push or max seq in redis
 	pushMsgCache       map[uint32]*server_api_params.MsgData
+
+	keyMsg *KeyMsg
 }
 
-func NewSelfMsgSync(dataBase *db.DataBase, ws *Ws, loginUserID string, conversationCh chan common.Cmd2Value) *SelfMsgSync {
-	p := &SelfMsgSync{DataBase: dataBase, Ws: ws, loginUserID: loginUserID, conversationCh: conversationCh}
+func NewSelfMsgSync(dataBase *db.DataBase, ws *Ws, loginUserID string, conversationCh chan common.Cmd2Value, keyMsg *KeyMsg) *SelfMsgSync {
+	p := &SelfMsgSync{DataBase: dataBase, Ws: ws, loginUserID: loginUserID, conversationCh: conversationCh, keyMsg: keyMsg}
 	p.pushMsgCache = make(map[uint32]*server_api_params.MsgData, 0)
 	return p
 }
@@ -224,6 +226,10 @@ func (m *SelfMsgSync) syncMsgFromCache2ServerSplit(needSyncSeqList []uint32, ope
 	for {
 		pullMsgReq.OperationID = operationID
 		resp, err := m.SendReqWaitResp(&pullMsgReq, constant.WSPullMsgBySeqList, 60, 2, m.loginUserID, operationID)
+		if err != nil && m.LoginStatus() == constant.Logout {
+			log.Error(operationID, "SendReqWaitResp failed  Logout status ", err.Error(), m.LoginStatus())
+			return
+		}
 		if err != nil {
 			log.Error(operationID, "SendReqWaitResp failed ", err.Error(), constant.WSPullMsgBySeqList, 60, 2, m.loginUserID)
 			continue
@@ -247,13 +253,14 @@ func (m *SelfMsgSync) syncMsgFromServerSplit(needSyncSeqList []uint32, operation
 
 //触发新消息
 func (m *SelfMsgSync) triggerCmdNewMsgCome(msgList []*server_api_params.MsgData, operationID string) {
+	m.keyMsg.DecryptMsg(msgList, operationID)
 	for {
 		err := common.TriggerCmdNewMsgCome(sdk_struct.CmdNewMsgComeToConversation{MsgList: msgList, OperationID: operationID}, m.conversationCh)
 		if err != nil {
 			log.Warn(operationID, "TriggerCmdNewMsgCome failed, try again ", err.Error(), m.loginUserID)
 			continue
 		}
-		log.Warn(operationID, "TriggerCmdNewMsgCome ok ", m.loginUserID)
+		log.Debug(operationID, "TriggerCmdNewMsgCome ok ", m.loginUserID)
 		return
 	}
 }

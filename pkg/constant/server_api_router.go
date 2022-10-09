@@ -1,11 +1,13 @@
 package constant
 
 const (
-	GetSelfUserInfoRouter         = "/user/get_self_user_info"
-	GetUsersInfoRouter            = "/user/get_users_info"
-	UpdateSelfUserInfoRouter      = "/user/update_user_info"
-	SetGlobalRecvMessageOptRouter = "/user/set_global_msg_recv_opt"
-	GetUsersInfoFromCacheRouter   = "/user/get_users_info_from_cache"
+	GetSelfUserInfoRouter                = "/user/get_self_user_info"
+	GetUsersInfoRouter                   = "/user/get_users_info"
+	UpdateSelfUserInfoRouter             = "/user/update_user_info"
+	SetGlobalRecvMessageOptRouter        = "/user/set_global_msg_recv_opt"
+	GetUsersInfoFromCacheRouter          = "/user/get_users_info_from_cache"
+	GetEncryptionKeyRouter               = "/user" + "/get_encryption_key"
+	GetAllJoinedGroupEncryptionKeyRouter = "/user" + "/get_all_joined_group_encryption_key"
 
 	AddFriendRouter                    = "/friend/add_friend"
 	DeleteFriendRouter                 = "/friend/delete_friend"
@@ -56,6 +58,9 @@ const (
 	CancelMuteGroupRouter             = RouterGroup + "/cancel_mute_group"
 	SetGroupMemberNicknameRouter      = RouterGroup + "/set_group_member_nickname"
 	SetGroupMemberInfoRouter          = RouterGroup + "/set_group_member_info"
+	GetGroupAbstractInfoRouter        = RouterGroup + "/get_group_abstract_info"
+
+	///get_encryption_key
 
 	SetReceiveMessageOptRouter         = "/conversation/set_receive_message_opt"
 	GetReceiveMessageOptRouter         = "/conversation/get_receive_message_opt"
@@ -75,6 +80,10 @@ const (
 	//super_group
 	GetJoinedSuperGroupListRouter = RouterSuperGroup + "/get_joined_group_list"
 	GetSuperGroupsInfoRouter      = RouterSuperGroup + "/get_groups_info"
+
+	//third
+	FcmUpdateTokenRouter = RouterThird + "/fcm_update_token"
+	SetAppBadgeRouter    = RouterThird + "/set_app_badge"
 )
 const (
 	RouterGroup        = "/group"
@@ -83,4 +92,5 @@ const (
 	RouterAuth         = "/auth"
 	RouterSuperGroup   = "/super_group"
 	RouterMsg          = "/msg"
+	RouterThird        = "/third"
 )

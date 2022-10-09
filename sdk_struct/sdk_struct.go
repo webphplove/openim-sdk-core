@@ -174,6 +174,8 @@ type AttachedInfoElem struct {
 	HasReadTime               int64            `json:"hasReadTime"`
 	NotSenderNotificationPush bool             `json:"notSenderNotificationPush"`
 	MessageEntityList         []*MessageEntity `json:"messageEntityList,omitempty"`
+	IsEncryption              bool             `json:"isEncryption"`
+	InEncryptStatus           bool             `json:"inEncryptStatus"`
 }
 type MessageEntity struct {
 	Type   string `json:"type,omitempty"`
@@ -206,12 +208,14 @@ func (n NewMsgList) Swap(i, j int) {
 }
 
 type IMConfig struct {
-	Platform      int32  `json:"platform"`
-	ApiAddr       string `json:"api_addr"`
-	WsAddr        string `json:"ws_addr"`
-	DataDir       string `json:"data_dir"`
-	LogLevel      uint32 `json:"log_level"`
-	ObjectStorage string `json:"object_storage"` //"cos"(default)  "oss"
+	Platform         int32  `json:"platform"`
+	ApiAddr          string `json:"api_addr"`
+	WsAddr           string `json:"ws_addr"`
+	DataDir          string `json:"data_dir"`
+	LogLevel         uint32 `json:"log_level"`
+	ObjectStorage    string `json:"object_storage"` //"cos"(default)  "oss"
+	EncryptionKey    string `json:"encryption_key"`
+	IsNeedEncryption bool   `json:"is_need_encryption"`
 }
 
 var SvrConf IMConfig

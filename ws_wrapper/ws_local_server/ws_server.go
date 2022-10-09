@@ -11,16 +11,19 @@ import (
 	"fmt"
 	"github.com/gorilla/websocket"
 	"net/http"
+	_ "net/http/pprof"
 	"open_im_sdk/open_im_sdk"
 	"open_im_sdk/pkg/log"
 	utils2 "open_im_sdk/pkg/utils"
 	"open_im_sdk/sdk_struct"
 	"open_im_sdk/ws_wrapper/utils"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 )
 
+const WriteTimeoutSeconds = 30
 const POINTNUM = 10
 
 var (
@@ -62,6 +65,9 @@ func (ws *WServer) OnInit(wsPort int) {
 
 func (ws *WServer) Run() {
 	go ws.getMsgAndSend()
+	go func() {
+		http.ListenAndServe("0.0.0.0:45000", nil)
+	}()
 	http.HandleFunc("/", ws.wsHandler)         //Get request from client to handle by wsHandler
 	err := http.ListenAndServe(ws.wsAddr, nil) //Start listening
 	if err != nil {
@@ -72,10 +78,7 @@ func (ws *WServer) Run() {
 func (ws *WServer) getMsgAndSend() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Info("", "getMsgAndSend panic", " panic is ", r)
-			buf := make([]byte, 1<<20)
-			runtime.Stack(buf, true)
-			log.Info("", "panic", "call", string(buf))
+			log.Info("", "getMsgAndSend panic", " panic is ", r, debug.Stack())
 			ws.getMsgAndSend()
 			log.Info("", "goroutine getMsgAndSend restart")
 		}
@@ -110,12 +113,10 @@ func (ws *WServer) getMsgAndSend() {
 			}()
 		}
 	}
-
 }
 
 func (ws *WServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	operationID := utils2.OperationIDGenerator()
-	log.Info(operationID, "wsHandler ", r.URL.Query())
 	defer func() {
 		if r := recover(); r != nil {
 			log.Info(operationID, "wsHandler panic recover", " panic is ", r)
@@ -124,22 +125,28 @@ func (ws *WServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 			log.Info(operationID, "panic", "call", string(buf))
 		}
 	}()
-	if ws.headerCheck(w, r) {
+	//var mem runtime.MemStats
+	//runtime.ReadMemStats(&mem)
+	//if mem.Alloc > 2*1024*1024*1024 {
+	//	panic("Memory leak " + int64ToString(int64(mem.Alloc)))
+	//}
+	//log.Info(operationID, "wsHandler ", r.URL.Query(), "js sdk svr mem: ", mem.Alloc, mem.TotalAlloc, "all: ", mem)
+
+	if ws.headerCheck(w, r, operationID) {
 		query := r.URL.Query()
 		conn, err := ws.wsUpGrader.Upgrade(w, r, nil) //Conn is obtained through the upgraded escalator
 		if err != nil {
 			log.Info(operationID, "upgrade http conn err", "", "err", err)
 			return
 		} else {
-			//Connection mapping relationship,
-			//userID+" "+platformID->conn
+
 			SendID := query["sendID"][0] + " " + utils.PlatformIDToName(int32(utils.StringToInt64(query["platformID"][0])))
 			newConn := &UserConn{conn, new(sync.Mutex)}
 			ws.addUserConn(SendID, newConn, operationID)
 			go ws.readMsg(newConn)
 		}
 	} else {
-		log.Info(operationID, "headerCheck failed")
+		log.NewError(operationID, "headerCheck failed")
 	}
 }
 
@@ -155,7 +162,7 @@ func (ws *WServer) readMsg(conn *UserConn) {
 	for {
 		msgType, msg, err := conn.ReadMessage()
 		if err != nil {
-			log.Info("", "ReadMessage error", "", "userIP", conn.RemoteAddr().String(), "userUid", ws.getUserUid(conn), "error", err)
+			log.Info("", "ReadMessage error", "", "userIP", conn.RemoteAddr().String(), "userUid", ws.getUserUid(conn), "error", err.Error())
 
 			//log.Info("debug memory delUserConn begin ")
 			//time.Sleep(1 * time.Second)
@@ -182,6 +189,7 @@ func (ws *WServer) readMsg(conn *UserConn) {
 func (ws *WServer) writeMsg(conn *UserConn, a int, msg []byte) error {
 	conn.w.Lock()
 	defer conn.w.Unlock()
+	conn.SetWriteDeadline(time.Now().Add(time.Duration(WriteTimeoutSeconds) * time.Second))
 	return conn.WriteMessage(a, msg)
 
 }
@@ -245,29 +253,27 @@ func (ws *WServer) getConnNum(uid string) int {
 }
 
 func (ws *WServer) delUserConn(conn *UserConn) {
-
+	operationID := utils2.OperationIDGenerator()
 	rwLock.Lock()
 	var uidPlatform string
-	//	log.Info("", "before del, wsConnToUser map ", ws.wsConnToUser)
-	//	log.Info("", "before del, wsUserToConn  map ", ws.wsUserToConn)
 	if oldStringMap, ok := ws.wsConnToUser[conn]; ok {
 		uidPlatform = oldStringMap[conn.RemoteAddr().String()]
 		if oldConnMap, ok := ws.wsUserToConn[uidPlatform]; ok {
 
-			log.Info("old map : ", oldConnMap, "conn: ", conn.RemoteAddr().String())
+			log.Info(operationID, "old map : ", oldConnMap, "conn: ", conn.RemoteAddr().String())
 			delete(oldConnMap, conn.RemoteAddr().String())
 
 			ws.wsUserToConn[uidPlatform] = oldConnMap
-			log.Info("WS delete operation", "", "wsUser deleted", ws.wsUserToConn, "uid", uidPlatform, "online_num", len(ws.wsUserToConn))
+			log.Info(operationID, "WS delete operation", "", "wsUser deleted", ws.wsUserToConn, "uid", uidPlatform, "online_num", len(ws.wsUserToConn))
 			if len(oldConnMap) == 0 {
-				log.Info("no conn delete user router ", uidPlatform)
-				log.Info("DelUserRouter ", uidPlatform)
-				DelUserRouter(uidPlatform)
+				log.Info(operationID, "no conn delete user router ", uidPlatform)
+				log.Info(operationID, "DelUserRouter ", uidPlatform)
+				DelUserRouter(uidPlatform, operationID)
 				ws.wsUserToConn[uidPlatform] = make(map[string]*UserConn)
 				delete(ws.wsUserToConn, uidPlatform)
 			}
 		} else {
-			log.Info("uid not exist", "", "wsUser deleted", ws.wsUserToConn, "uid", uidPlatform, "online_num", len(ws.wsUserToConn))
+			log.Info(operationID, "uid not exist", "", "wsUser deleted", ws.wsUserToConn, "uid", uidPlatform, "online_num", len(ws.wsUserToConn))
 		}
 		oldStringMap = make(map[string]string)
 		delete(ws.wsConnToUser, conn)
@@ -275,11 +281,8 @@ func (ws *WServer) delUserConn(conn *UserConn) {
 	}
 	err := conn.Close()
 	if err != nil {
-		log.Info("close err", "", "uid", uidPlatform, "conn", conn)
+		log.Info(operationID, "close err", "", "uid", uidPlatform, "conn", conn)
 	}
-	//	log.Info("after del, wsConnToUser map ", ws.wsConnToUser)
-	//	log.Info("after del, wsUserToConn  map ", ws.wsUserToConn)
-
 	rwLock.Unlock()
 }
 
@@ -301,15 +304,15 @@ func (ws *WServer) getUserUid(conn *UserConn) string {
 	return "getUserUid"
 }
 
-func (ws *WServer) headerCheck(w http.ResponseWriter, r *http.Request) bool {
+func (ws *WServer) headerCheck(w http.ResponseWriter, r *http.Request, operationID string) bool {
 
 	status := http.StatusUnauthorized
 	query := r.URL.Query()
-	log.Info("headerCheck: ", query["token"], query["platformID"], query["sendID"])
+	log.Info(operationID, "headerCheck: ", query["token"], query["platformID"], query["sendID"])
 	if len(query["token"]) != 0 && len(query["sendID"]) != 0 && len(query["platformID"]) != 0 {
 		SendID := query["sendID"][0] + " " + utils.PlatformIDToName(int32(utils.StringToInt64(query["platformID"][0])))
 		if ws.getConnNum(SendID) >= POINTNUM {
-			log.Info("Over quantity failed", query, ws.getConnNum(SendID), SendID)
+			log.Info(operationID, "Over quantity failed", query, ws.getConnNum(SendID), SendID)
 			w.Header().Set("Sec-Websocket-Version", "13")
 			http.Error(w, "Over quantity", status)
 			return false
@@ -320,18 +323,18 @@ func (ws *WServer) headerCheck(w http.ResponseWriter, r *http.Request) bool {
 		//	http.Error(w, http.StatusText(status), StatusBadRequest)
 		//	return false
 		//}
-		checkFlag := open_im_sdk.CheckToken(query["sendID"][0], query["token"][0])
+		checkFlag := open_im_sdk.CheckToken(query["sendID"][0], query["token"][0], operationID)
 		if checkFlag != nil {
-			log.Info("check token failed", query["sendID"][0], query["token"][0], checkFlag.Error())
+			log.Info(operationID, "check token failed", query["sendID"][0], query["token"][0], checkFlag.Error())
 			w.Header().Set("Sec-Websocket-Version", "13")
 			http.Error(w, http.StatusText(status), status)
 			return false
 		}
-		log.Info("Connection Authentication Success", "", "token", query["token"][0], "userID", query["sendID"][0], "platformID", query["platformID"][0])
+		log.Info(operationID, "Connection Authentication Success", "", "token", query["token"][0], "userID", query["sendID"][0], "platformID", query["platformID"][0])
 		return true
 
 	} else {
-		log.Info("Args err", "", "query", query)
+		log.Info(operationID, "Args err", "", "query", query)
 		w.Header().Set("Sec-Websocket-Version", "13")
 		http.Error(w, http.StatusText(status), StatusBadRequest)
 		return false

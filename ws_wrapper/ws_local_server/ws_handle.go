@@ -5,7 +5,6 @@ import (
 	"errors"
 	"github.com/gorilla/websocket"
 	"open_im_sdk/pkg/log"
-	utils2 "open_im_sdk/pkg/utils"
 	"open_im_sdk/sdk_struct"
 	"open_im_sdk/ws_wrapper/utils"
 	"reflect"
@@ -60,6 +59,10 @@ func int32ToString(i int32) string {
 	return strconv.FormatInt(int64(i), 10)
 }
 
+func int64ToString(i int64) string {
+	return strconv.FormatInt(i, 10)
+}
+
 //uid->funcname->func
 
 type WsFuncRouter struct {
@@ -67,12 +70,12 @@ type WsFuncRouter struct {
 	//conn *UserConn
 }
 
-func DelUserRouter(uid string) {
-	log.Info("", "DelUserRouter ", uid)
+func DelUserRouter(uid string, operationID string) {
+	log.Info(operationID, "DelUserRouter ", uid)
 	sub := " " + utils.PlatformIDToName(sdk_struct.SvrConf.Platform)
 	idx := strings.LastIndex(uid, sub)
 	if idx == -1 {
-		log.Info("", "err uid, not Web", uid, sub)
+		log.Info(operationID, "err uid, not Web", uid, sub)
 		return
 	}
 
@@ -81,11 +84,8 @@ func DelUserRouter(uid string) {
 	UserRouteRwLock.Lock()
 	defer UserRouteRwLock.Unlock()
 	urm, ok := UserRouteMap[uid]
-	operationID := utils2.OperationIDGenerator()
 	if ok {
-
 		log.Info(operationID, "DelUserRouter logout, UnInitSDK ", uid, operationID)
-
 		urm.wsRouter.LogoutNoCallback(uid, operationID)
 		urm.wsRouter.UnInitSDK()
 	} else {
@@ -134,13 +134,15 @@ func GenUserRouterNoLock(uid string, batchMsg int, operationID string) *RefRoute
 	wsRouter1.SetUserListener()
 	log.Info(operationID, "SetSignalingListener() ", uid)
 	wsRouter1.SetSignalingListener()
-	log.Info(operationID, "setWorkMomentsListener", uid)
+	log.Info(operationID, "setWorkMomentsListener()", uid)
 	wsRouter1.SetWorkMomentsListener()
+	log.Info(operationID, "SetOrganizationListener()", uid)
+	wsRouter1.SetOrganizationListener()
 	var rr RefRouter
 	rr.refName = RouteMap1
 	rr.wsRouter = &wsRouter1
 	UserRouteMap[uid] = rr
-	log.Info("", "insert UserRouteMap: ", uid)
+	log.Info(operationID, "insert UserRouteMap: ", uid)
 	return &rr
 }
 

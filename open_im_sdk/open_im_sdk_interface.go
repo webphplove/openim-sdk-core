@@ -28,7 +28,6 @@ func init(){
 		RouteMapSDK[mName] = vf.Method(i)
 		fmt.Println("func ", vf.Method(i))
 	}
-
 }
 */
 
@@ -41,6 +40,11 @@ func SetHeartbeatInterval(heartbeatInterval int) {
 }
 
 func InitSDK(listener open_im_sdk_callback.OnConnListener, operationID string, config string) bool {
+	log.NewPrivateLog("", sdk_struct.SvrConf.LogLevel)
+	if userForSDK != nil {
+		log.Warn(operationID, "Initialize multiple times, use the existing ", userForSDK)
+		return true
+	}
 	if err := json.Unmarshal([]byte(config), &sdk_struct.SvrConf); err != nil {
 		log.Error(operationID, "Unmarshal failed ", err.Error(), config)
 		return false
@@ -54,17 +58,13 @@ func InitSDK(listener open_im_sdk_callback.OnConnListener, operationID string, c
 		return false
 	}
 
-	log.NewPrivateLog("", sdk_struct.SvrConf.LogLevel)
 	log.Info(operationID, "config ", config, sdk_struct.SvrConf)
 	log.NewInfo(operationID, utils.GetSelfFuncName(), config, SdkVersion())
 	if listener == nil || config == "" {
 		log.Error(operationID, "listener or config is nil")
 		return false
 	}
-	if userForSDK != nil {
-		log.Warn(operationID, "Initialize multiple times, call logout")
-		userForSDK.Logout(nil, utils.OperationIDGenerator())
-	}
+
 	userForSDK = new(login.LoginMgr)
 
 	return userForSDK.InitSDK(sdk_struct.SvrConf, listener, operationID)
@@ -1009,8 +1009,8 @@ func InitOnce(config *sdk_struct.IMConfig) bool {
 	return true
 }
 
-func CheckToken(userID, token string) error {
-	err, _ := login.CheckToken(userID, token, "")
+func CheckToken(userID, token string, operationID string) error {
+	err, _ := login.CheckToken(userID, token, operationID)
 	return err
 }
 
@@ -1060,6 +1060,14 @@ func SetSignalingListener(callback open_im_sdk_callback.OnSignalingListener) {
 		return
 	}
 	userForSDK.SetSignalingListener(callback)
+}
+
+func SetSignalingListenerForService(callback open_im_sdk_callback.OnSignalingListener) {
+	if callback == nil || userForSDK == nil {
+		log.Error("callback or userForSDK is nil")
+		return
+	}
+	userForSDK.SetSignalingListenerForService(callback)
 }
 
 func SignalingInviteInGroup(callback open_im_sdk_callback.Base, operationID string, signalInviteInGroupReq string) {
@@ -1205,4 +1213,20 @@ func ClearWorkMomentsNotification(callback open_im_sdk_callback.Base, operationI
 		return
 	}
 	userForSDK.WorkMoments().ClearWorkMomentsNotification(callback, operationID)
+}
+func UpdateFcmToken(callback open_im_sdk_callback.Base, fmcToken, operationID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Push().UpdateFcmToken(callback, fmcToken, operationID)
+}
+func SetAppBadge(callback open_im_sdk_callback.Base, appUnreadCount int32, operationID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Push().SetAppBadge(callback, appUnreadCount, operationID)
 }
