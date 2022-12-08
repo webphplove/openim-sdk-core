@@ -1,7 +1,7 @@
 package workMoments
 
 import (
-	ws "open_im_sdk/internal/interaction"
+	comm3 "open_im_sdk/internal/common"
 	"open_im_sdk/open_im_sdk_callback"
 	"open_im_sdk/pkg/common"
 	"open_im_sdk/pkg/db/db_interface"
@@ -14,10 +14,10 @@ type WorkMoments struct {
 	listener    open_im_sdk_callback.OnWorkMomentsListener
 	loginUserID string
 	db          db_interface.DataBase
-	p           *ws.PostApi
+	p           *comm3.PostApi
 }
 
-func NewWorkMoments(loginUserID string, db db_interface.DataBase, p *ws.PostApi) *WorkMoments {
+func NewWorkMoments(loginUserID string, db db_interface.DataBase, p *comm3.PostApi) *WorkMoments {
 	return &WorkMoments{loginUserID: loginUserID, db: db, p: p}
 }
 

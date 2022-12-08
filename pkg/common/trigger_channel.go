@@ -94,6 +94,24 @@ func TriggerCmdPushMsg(msg sdk_struct.CmdPushMsgToMsgSync, ch chan Cmd2Value) er
 	return sendCmd(ch, c2v, 100)
 }
 
+func TriggerCmdConnectFailed(ch chan Cmd2Value) error {
+	if ch == nil {
+		return utils.Wrap(errors.New("ch == nil"), "")
+	}
+
+	c2v := Cmd2Value{Cmd: constant.CmdConnectFailed}
+	return sendCmd(ch, c2v, 100)
+}
+
+func TriggerCmdConnectSuccess(ch chan Cmd2Value) error {
+	if ch == nil {
+		return utils.Wrap(errors.New("ch == nil"), "")
+	}
+
+	c2v := Cmd2Value{Cmd: constant.CmdConnectSuccess}
+	return sendCmd(ch, c2v, 100)
+}
+
 func TriggerCmdMaxSeq(seq sdk_struct.CmdMaxSeqToMsgSync, ch chan Cmd2Value) error {
 	if ch == nil {
 		return utils.Wrap(errors.New("ch == nil"), "")

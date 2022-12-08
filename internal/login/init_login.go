@@ -10,6 +10,7 @@ import (
 	"open_im_sdk/internal/group"
 	"open_im_sdk/internal/heartbeart"
 	ws "open_im_sdk/internal/interaction"
+
 	comm2 "open_im_sdk/internal/obj_storage"
 	"open_im_sdk/internal/organization"
 	"open_im_sdk/internal/signaling"
@@ -76,7 +77,7 @@ type LoginMgr struct {
 	imConfig           sdk_struct.IMConfig
 
 	id2MinSeq map[string]uint32
-	postApi   *ws.PostApi
+	postApi   *comm3.PostApi
 }
 
 func (u *LoginMgr) Push() *comm2.Push {
@@ -235,7 +236,7 @@ func (u *LoginMgr) login(userID, token string, cb open_im_sdk_callback.Base, ope
 	var sqliteConn *db.DataBase
 	var err error
 	if constant.OnlyForTest == 1 {
-		wsConn := ws.NewWsConn(u.connListener, u.token, u.loginUserID, u.imConfig.IsCompression, u.conversationCh)
+		wsConn := ws.NewWsConn(u.connListener, u.token, u.loginUserID, u.imConfig.IsCompression, u.conversationCh, nil)
 		wsRespAsyn := ws.NewWsRespAsyn()
 		u.ws = ws.NewWs(wsRespAsyn, wsConn, u.cmdWsCh, u.pushMsgAndMaxSeqCh, u.heartbeatCmdCh, u.conversationCh)
 		u.heartbeat = heartbeart.NewHeartbeat(u.msgSync, u.heartbeatCmdCh, u.connListener, u.token, u.id2MinSeq, u.full)
@@ -264,7 +265,7 @@ func (u *LoginMgr) login(userID, token string, cb open_im_sdk_callback.Base, ope
 	u.joinedSuperGroupCh = make(chan common.Cmd2Value, 10)
 
 	u.id2MinSeq = make(map[string]uint32, 100)
-	p := ws.NewPostApi(token, sdk_struct.SvrConf.ApiAddr)
+	p := comm3.NewPostApi(token, sdk_struct.SvrConf.ApiAddr)
 	u.postApi = p
 	u.user = user.NewUser(sqliteConn, p, u.loginUserID, u.conversationCh)
 	u.user.SetListener(u.userListener)
@@ -295,10 +296,10 @@ func (u *LoginMgr) login(userID, token string, cb open_im_sdk_callback.Base, ope
 	log.Info(operationID, "forcedSynchronization success...", "login cost time: ", time.Since(t1))
 	log.Info(operationID, "all channel ", u.pushMsgAndMaxSeqCh, u.conversationCh, u.heartbeatCmdCh, u.cmdWsCh)
 
-	wsConn := ws.NewWsConn(u.connListener, u.token, u.loginUserID, u.imConfig.IsCompression, u.conversationCh)
+	wsConn := ws.NewWsConn(u.connListener, u.token, u.loginUserID, u.imConfig.IsCompression, u.conversationCh, u.pushMsgAndMaxSeqCh)
 	wsRespAsyn := ws.NewWsRespAsyn()
 	u.ws = ws.NewWs(wsRespAsyn, wsConn, u.cmdWsCh, u.pushMsgAndMaxSeqCh, u.heartbeatCmdCh, u.conversationCh)
-	u.msgSync = ws.NewMsgSync(u.db, u.ws, u.loginUserID, u.conversationCh, u.pushMsgAndMaxSeqCh, u.joinedSuperGroupCh)
+	u.msgSync = ws.NewMsgSync(u.db, u.ws, u.loginUserID, u.conversationCh, u.pushMsgAndMaxSeqCh, u.joinedSuperGroupCh, u.full)
 	u.heartbeat = heartbeart.NewHeartbeat(u.msgSync, u.heartbeatCmdCh, u.connListener, u.token, u.id2MinSeq, u.full)
 	log.NewInfo(operationID, u.imConfig.ObjectStorage)
 
@@ -519,7 +520,7 @@ func CheckToken(userID, token string, operationID string) (error, uint32) {
 		operationID = utils.OperationIDGenerator()
 	}
 	log.Debug(operationID, utils.GetSelfFuncName(), userID, token)
-	p := ws.NewPostApi(token, sdk_struct.SvrConf.ApiAddr)
+	p := comm3.NewPostApi(token, sdk_struct.SvrConf.ApiAddr)
 	user := user.NewUser(nil, p, userID, nil)
 	//_, err := user.GetSelfUserInfoFromSvr(operationID)
 	//if err != nil {
@@ -530,7 +531,7 @@ func CheckToken(userID, token string, operationID string) (error, uint32) {
 }
 
 func (u *LoginMgr) uploadImage(callback open_im_sdk_callback.Base, filePath string, token, obj string, operationID string) string {
-	p := ws.NewPostApi(token, u.ImConfig().ApiAddr)
+	p := comm3.NewPostApi(token, u.ImConfig().ApiAddr)
 	var o comm3.ObjectStorage
 	switch obj {
 	case "cos":

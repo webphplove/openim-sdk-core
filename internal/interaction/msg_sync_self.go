@@ -1,6 +1,7 @@
 package interaction
 
 import (
+	"errors"
 	"github.com/golang/protobuf/proto"
 	"open_im_sdk/pkg/common"
 	"open_im_sdk/pkg/constant"
@@ -9,6 +10,7 @@ import (
 	"open_im_sdk/pkg/server_api_params"
 	"open_im_sdk/pkg/utils"
 	"open_im_sdk/sdk_struct"
+	"time"
 )
 
 type SelfMsgSync struct {
@@ -167,22 +169,25 @@ func (m *SelfMsgSync) doPushSingleMsg(cmd common.Cmd2Value) {
 }
 
 //从服务端同步消息，通过seqMaxSynchronized  seqMaxNeedSync 来同步中间的seq，同步完设置这两个值
-func (m *SelfMsgSync) syncMsg(operationID string) {
+func (m *SelfMsgSync) syncMsg(operationID string) error {
 	if m.seqMaxNeedSync > m.seqMaxSynchronized {
 		log.Info(operationID, "do syncMsgFromServer ", m.seqMaxSynchronized+1, m.seqMaxNeedSync)
-		m.syncMsgFromServer(m.seqMaxSynchronized+1, m.seqMaxNeedSync, operationID)
+		if err := m.syncMsgFromServer(m.seqMaxSynchronized+1, m.seqMaxNeedSync, operationID); err != nil {
+			return utils.Wrap(err, "syncMsgFromServer failed")
+		}
 		m.seqMaxSynchronized = m.seqMaxNeedSync
 	} else {
 		log.Info(operationID, "do nothing, m.seqMaxNeedSync <= m.seqMaxSynchronized ", m.seqMaxNeedSync, m.seqMaxSynchronized)
 	}
+	return nil
 }
 
 //从本地缓存+服务端获取消息，内部对seq列表做了拆分
-func (m *SelfMsgSync) syncMsgFromServer(beginSeq, endSeq uint32, operationID string) {
+func (m *SelfMsgSync) syncMsgFromServer(beginSeq, endSeq uint32, operationID string) error {
 	log.Debug(operationID, utils.GetSelfFuncName(), " args ", beginSeq, endSeq)
 	if beginSeq > endSeq {
 		log.Error(operationID, "beginSeq > endSeq", beginSeq, endSeq)
-		return
+		return nil
 	}
 	var needSyncSeqList []uint32
 	for i := beginSeq; i <= endSeq; i++ {
@@ -190,16 +195,21 @@ func (m *SelfMsgSync) syncMsgFromServer(beginSeq, endSeq uint32, operationID str
 	}
 	var SPLIT = constant.SplitPullMsgNum
 	for i := 0; i < len(needSyncSeqList)/SPLIT; i++ {
-		m.syncMsgFromServerSplit(needSyncSeqList[i*SPLIT:(i+1)*SPLIT], operationID)
+		if err := m.syncMsgFromServerSplit(needSyncSeqList[i*SPLIT:(i+1)*SPLIT], operationID); err != nil {
+			return utils.Wrap(err, "syncMsgFromServerSplit failed")
+		}
 	}
-	m.syncMsgFromServerSplit(needSyncSeqList[SPLIT*(len(needSyncSeqList)/SPLIT):], operationID)
+	if err := m.syncMsgFromServerSplit(needSyncSeqList[SPLIT*(len(needSyncSeqList)/SPLIT):], operationID); err != nil {
+		return utils.Wrap(err, "syncMsgFromServerSplit failed")
+	}
+	return nil
 }
 
 //先从本地缓存读取消息，如果不存在，再从服务端读取， 上层把seq列表拆分
-func (m *SelfMsgSync) syncMsgFromCache2ServerSplit(needSyncSeqList []uint32, operationID string) {
+func (m *SelfMsgSync) syncMsgFromCache2ServerSplit(needSyncSeqList []uint32, operationID string) error {
 	if len(needSyncSeqList) > constant.SplitPullMsgNum {
 		log.Error(operationID, "seq list too large ", len(needSyncSeqList))
-		return
+		return errors.New("seq list too large ")
 	}
 
 	var msgList []*server_api_params.MsgData
@@ -215,38 +225,50 @@ func (m *SelfMsgSync) syncMsgFromCache2ServerSplit(needSyncSeqList []uint32, ope
 	}
 	if len(noInCache) == 0 {
 		m.triggerCmdNewMsgCome(msgList, operationID)
-		return
+		return nil
 	}
 	log.Debug(operationID, "seq no in cache num: ", len(noInCache), " all seq num: ", len(needSyncSeqList))
 	var pullMsgReq server_api_params.PullMessageBySeqListReq
 	pullMsgReq.SeqList = noInCache
 	pullMsgReq.UserID = m.loginUserID
+
+	tryNum := 0
+	tryMaxNum := 10
+
 	for {
+		if tryNum != 0 {
+			time.Sleep(3 * time.Second)
+		}
+		if tryNum == tryMaxNum {
+			return errors.New("try many times ")
+		}
+
 		pullMsgReq.OperationID = operationID
-		resp, err := m.SendReqWaitResp(&pullMsgReq, constant.WSPullMsgBySeqList, 60, 2, m.loginUserID, operationID)
+		resp, err := m.SendReqWaitResp(&pullMsgReq, constant.WSPullMsgBySeqList, 60, 1, m.loginUserID, operationID)
 		if err != nil && m.LoginStatus() == constant.Logout {
 			log.Error(operationID, "SendReqWaitResp failed  Logout status ", err.Error(), m.LoginStatus())
-			return
+			return utils.Wrap(err, " SendReqWaitResp failed Logout status")
 		}
 		if err != nil {
-			log.Error(operationID, "SendReqWaitResp failed ", err.Error(), constant.WSPullMsgBySeqList, 60, 2, m.loginUserID)
+			log.Error(operationID, "SendReqWaitResp failed ", err.Error(), constant.WSPullMsgBySeqList, 60, 1, m.loginUserID)
+			tryNum++
 			continue
 		}
 		var pullMsgResp server_api_params.PullMessageBySeqListResp
 		err = proto.Unmarshal(resp.Data, &pullMsgResp)
 		if err != nil {
 			log.Error(operationID, "Unmarshal failed ", err.Error())
-			return
+			return utils.Wrap(err, " Unmarshal failed ")
 
 		}
 		msgList = append(msgList, pullMsgResp.List...)
 		m.triggerCmdNewMsgCome(msgList, operationID)
-		break
+		return nil
 	}
 }
 
-func (m *SelfMsgSync) syncMsgFromServerSplit(needSyncSeqList []uint32, operationID string) {
-	m.syncMsgFromCache2ServerSplit(needSyncSeqList, operationID)
+func (m *SelfMsgSync) syncMsgFromServerSplit(needSyncSeqList []uint32, operationID string) error {
+	return m.syncMsgFromCache2ServerSplit(needSyncSeqList, operationID)
 }
 
 //触发新消息
@@ -260,4 +282,22 @@ func (m *SelfMsgSync) triggerCmdNewMsgCome(msgList []*server_api_params.MsgData,
 		log.Debug(operationID, "TriggerCmdNewMsgCome ok ", m.loginUserID)
 		return
 	}
+}
+
+func (m *SelfMsgSync) DoConnectSuccess(minSeqOnSvr, maxSeqOnSvr uint32, operationID string) error {
+	log.Debug(operationID, utils.GetSelfFuncName(), " args ", " maxSeqOnSvr, minSeqOnSvr, m.seqMaxSynchronized, m.seqMaxNeedSync", maxSeqOnSvr, minSeqOnSvr, m.seqMaxSynchronized, m.seqMaxNeedSync)
+	if minSeqOnSvr > maxSeqOnSvr {
+		log.Error(operationID, "minSeqOnSvr > maxSeqOnSvr", minSeqOnSvr, maxSeqOnSvr)
+		return errors.New("minSeqOnSvr > maxSeqOnSvr ")
+	}
+	if minSeqOnSvr > m.seqMaxSynchronized {
+		m.seqMaxSynchronized = minSeqOnSvr - 1
+	}
+	if maxSeqOnSvr <= m.seqMaxNeedSync {
+		log.Debug(operationID, "do nothing ", maxSeqOnSvr, m.seqMaxNeedSync)
+		return nil
+	}
+
+	m.seqMaxNeedSync = maxSeqOnSvr
+	return m.syncMsg(operationID)
 }

@@ -2,7 +2,7 @@ package organization
 
 import (
 	"github.com/jinzhu/copier"
-	ws "open_im_sdk/internal/interaction"
+	comm3 "open_im_sdk/internal/common"
 	"open_im_sdk/open_im_sdk_callback"
 	"open_im_sdk/pkg/common"
 	"open_im_sdk/pkg/constant"
@@ -19,7 +19,7 @@ type Organization struct {
 	listener    open_im_sdk_callback.OnOrganizationListener
 	loginUserID string
 	db          db_interface.DataBase
-	p           *ws.PostApi
+	p           *comm3.PostApi
 	loginTime   int64
 
 	//	memberSyncMutex sync.RWMutex
@@ -33,7 +33,7 @@ func (o *Organization) SetLoginTime(loginTime int64) {
 	o.loginTime = loginTime
 }
 
-func NewOrganization(loginUserID string, db db_interface.DataBase, p *ws.PostApi) *Organization {
+func NewOrganization(loginUserID string, db db_interface.DataBase, p *comm3.PostApi) *Organization {
 	return &Organization{loginUserID: loginUserID, db: db, p: p}
 }
 

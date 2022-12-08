@@ -3,7 +3,7 @@ package super_group
 import (
 	"errors"
 	"github.com/golang/protobuf/proto"
-	ws "open_im_sdk/internal/interaction"
+	comm3 "open_im_sdk/internal/common"
 	"open_im_sdk/pkg/common"
 	"open_im_sdk/pkg/constant"
 	"open_im_sdk/pkg/db/db_interface"
@@ -17,7 +17,7 @@ import (
 type SuperGroup struct {
 	loginUserID        string
 	db                 db_interface.DataBase
-	p                  *ws.PostApi
+	p                  *comm3.PostApi
 	loginTime          int64
 	joinedSuperGroupCh chan common.Cmd2Value
 	heartbeatCmdCh     chan common.Cmd2Value
@@ -27,7 +27,7 @@ func (s *SuperGroup) SetLoginTime(loginTime int64) {
 	s.loginTime = loginTime
 }
 
-func NewSuperGroup(loginUserID string, db db_interface.DataBase, p *ws.PostApi, joinedSuperGroupCh chan common.Cmd2Value, heartbeatCmdCh chan common.Cmd2Value) *SuperGroup {
+func NewSuperGroup(loginUserID string, db db_interface.DataBase, p *comm3.PostApi, joinedSuperGroupCh chan common.Cmd2Value, heartbeatCmdCh chan common.Cmd2Value) *SuperGroup {
 	return &SuperGroup{loginUserID: loginUserID, db: db, p: p, joinedSuperGroupCh: joinedSuperGroupCh, heartbeatCmdCh: heartbeatCmdCh}
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	common2 "open_im_sdk/internal/common"
 	"open_im_sdk/pkg/constant"
 	"open_im_sdk/pkg/log"
 
@@ -12,7 +13,6 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
-	ws "open_im_sdk/internal/interaction"
 	//	"open_im_sdk/pkg/constant"
 	"open_im_sdk/pkg/server_api_params"
 	"open_im_sdk/pkg/utils"
@@ -21,7 +21,7 @@ import (
 )
 
 type COS struct {
-	p *ws.PostApi
+	p *common2.PostApi
 }
 
 func (c *COS) UploadImageByBuffer(buffer *bytes.Buffer, size int64, imageType string, onProgressFun func(int)) (string, string, error) {
@@ -40,7 +40,7 @@ func (c *COS) UploadVideoByBuffer(videoBuffer, snapshotBuffer *bytes.Buffer, vid
 	panic("implement me")
 }
 
-func NewCOS(p *ws.PostApi) *COS {
+func NewCOS(p *common2.PostApi) *COS {
 	return &COS{p: p}
 }
 

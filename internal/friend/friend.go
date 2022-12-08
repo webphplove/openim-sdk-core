@@ -17,7 +17,6 @@ package friend
 import (
 	"errors"
 	comm "open_im_sdk/internal/common"
-	ws "open_im_sdk/internal/interaction"
 	"open_im_sdk/internal/user"
 	"open_im_sdk/open_im_sdk_callback"
 	"open_im_sdk/pkg/common"
@@ -35,7 +34,7 @@ type Friend struct {
 	loginUserID    string
 	db             db_interface.DataBase
 	user           *user.User
-	p              *ws.PostApi
+	p              *comm.PostApi
 	loginTime      int64
 	conversationCh chan common.Cmd2Value
 }
@@ -52,7 +51,7 @@ func (f *Friend) Db() db_interface.DataBase {
 	return f.db
 }
 
-func NewFriend(loginUserID string, db db_interface.DataBase, user *user.User, p *ws.PostApi, conversationCh chan common.Cmd2Value) *Friend {
+func NewFriend(loginUserID string, db db_interface.DataBase, user *user.User, p *comm.PostApi, conversationCh chan common.Cmd2Value) *Friend {
 	return &Friend{loginUserID: loginUserID, db: db, user: user, p: p, conversationCh: conversationCh}
 }
 

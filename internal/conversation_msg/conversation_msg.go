@@ -37,7 +37,7 @@ var SearchContentType = []int{constant.Text, constant.AtText, constant.File}
 type Conversation struct {
 	*ws.Ws
 	db                   db_interface.DataBase
-	p                    *ws.PostApi
+	p                    *common2.PostApi
 	ConversationListener open_im_sdk_callback.OnConversationListener
 	msgListener          open_im_sdk_callback.OnAdvancedMsgListener
 	batchMsgListener     open_im_sdk_callback.OnBatchMsgListener
@@ -83,7 +83,7 @@ func (c *Conversation) SetBatchMsgListener(batchMsgListener open_im_sdk_callback
 	c.batchMsgListener = batchMsgListener
 }
 
-func NewConversation(ws *ws.Ws, db db_interface.DataBase, p *ws.PostApi,
+func NewConversation(ws *ws.Ws, db db_interface.DataBase, p *common2.PostApi,
 	ch chan common.Cmd2Value, loginUserID string, platformID int32, dataDir, encryptionKey string,
 	friend *friend.Friend, group *group.Group, user *user.User,
 	objectStorage common2.ObjectStorage, conversationListener open_im_sdk_callback.OnConversationListener,

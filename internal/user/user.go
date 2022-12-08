@@ -7,8 +7,6 @@ import (
 	"open_im_sdk/pkg/db/db_interface"
 	"open_im_sdk/pkg/db/model_struct"
 
-	//"github.com/mitchellh/mapstructure"
-	ws "open_im_sdk/internal/interaction"
 	"open_im_sdk/open_im_sdk_callback"
 	"open_im_sdk/pkg/common"
 	"open_im_sdk/pkg/constant"
@@ -21,7 +19,7 @@ import (
 
 type User struct {
 	db_interface.DataBase
-	p              *ws.PostApi
+	p              *comm.PostApi
 	loginUserID    string
 	listener       open_im_sdk_callback.OnUserListener
 	loginTime      int64
@@ -40,7 +38,7 @@ func (u *User) SetListener(listener open_im_sdk_callback.OnUserListener) {
 	u.listener = listener
 }
 
-func NewUser(dataBase db_interface.DataBase, p *ws.PostApi, loginUserID string, conversationCh chan common.Cmd2Value) *User {
+func NewUser(dataBase db_interface.DataBase, p *comm.PostApi, loginUserID string, conversationCh chan common.Cmd2Value) *User {
 	return &User{DataBase: dataBase, p: p, loginUserID: loginUserID, conversationCh: conversationCh}
 }
 

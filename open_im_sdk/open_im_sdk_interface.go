@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	ws "open_im_sdk/internal/interaction"
+	comm3 "open_im_sdk/internal/common"
 	"open_im_sdk/internal/login"
 	common2 "open_im_sdk/internal/obj_storage"
 	"open_im_sdk/open_im_sdk_callback"
@@ -1096,7 +1096,7 @@ func CheckResourceLoad(uSDK *login.LoginMgr) error {
 
 func uploadImage(callback open_im_sdk_callback.Base, operationID string, filePath string, token, obj string) string {
 	if obj == "cos" {
-		p := ws.NewPostApi(token, userForSDK.ImConfig().ApiAddr)
+		p := comm3.NewPostApi(token, userForSDK.ImConfig().ApiAddr)
 		o := common2.NewCOS(p)
 		url, _, err := o.UploadFile(filePath, func(progress int) {
 			if progress == 100 {

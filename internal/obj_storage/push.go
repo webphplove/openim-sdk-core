@@ -1,7 +1,7 @@
 package obj_storage
 
 import (
-	ws "open_im_sdk/internal/interaction"
+	common2 "open_im_sdk/internal/common"
 	"open_im_sdk/open_im_sdk_callback"
 
 	"open_im_sdk/pkg/constant"
@@ -11,12 +11,12 @@ import (
 )
 
 type Push struct {
-	p           *ws.PostApi
+	p           *common2.PostApi
 	platformID  int32
 	loginUserID string
 }
 
-func NewPush(p *ws.PostApi, platformID int32, loginUserID string) *Push {
+func NewPush(p *common2.PostApi, platformID int32, loginUserID string) *Push {
 	return &Push{p: p, platformID: platformID, loginUserID: loginUserID}
 }
 

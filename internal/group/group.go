@@ -4,7 +4,6 @@ import (
 	"errors"
 	"math/big"
 	comm "open_im_sdk/internal/common"
-	ws "open_im_sdk/internal/interaction"
 	"open_im_sdk/open_im_sdk_callback"
 	"open_im_sdk/pkg/common"
 	"open_im_sdk/pkg/constant"
@@ -27,7 +26,7 @@ type Group struct {
 	listener           open_im_sdk_callback.OnGroupListener
 	loginUserID        string
 	db                 db_interface.DataBase
-	p                  *ws.PostApi
+	p                  *comm.PostApi
 	loginTime          int64
 	joinedSuperGroupCh chan common.Cmd2Value
 	heartbeatCmdCh     chan common.Cmd2Value
@@ -44,7 +43,7 @@ func (g *Group) SetLoginTime(loginTime int64) {
 	g.loginTime = loginTime
 }
 
-func NewGroup(loginUserID string, db db_interface.DataBase, p *ws.PostApi,
+func NewGroup(loginUserID string, db db_interface.DataBase, p *comm.PostApi,
 	joinedSuperGroupCh chan common.Cmd2Value, heartbeatCmdCh chan common.Cmd2Value,
 	conversationCh chan common.Cmd2Value) *Group {
 	return &Group{loginUserID: loginUserID, db: db, p: p, joinedSuperGroupCh: joinedSuperGroupCh, heartbeatCmdCh: heartbeatCmdCh, conversationCh: conversationCh}

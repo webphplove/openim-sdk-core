@@ -22,10 +22,12 @@ const (
 	CmdJoinedSuperGroup = "018"
 	CmdUpdateMessage    = "019"
 
-	CmdMaxSeq  = "maxSeq"
-	CmdPushMsg = "pushMsg"
-	CmdLogout  = "Logout"
-	CmdWakeUp  = "wakeUp"
+	CmdMaxSeq         = "maxSeq"
+	CmdPushMsg        = "pushMsg"
+	CmdLogout         = "Logout"
+	CmdWakeUp         = "wakeUp"
+	CmdConnectFailed  = "ConnectFailed"
+	CmdConnectSuccess = "ConnectSuccess"
 )
 
 const (

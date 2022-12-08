@@ -12,17 +12,14 @@ var LogName = ""
 var ReliabilityUserA = 1234567
 var ReliabilityUserB = 1234567
 var (
-	TESTIP = "43.154.157.177"
+	TESTIP = "121.5.182.23"
 	//TESTIP              = "121.37.25.71"
-	APIADDR = "http://43.154.157.177" + ":10002"
-	//WSADDR              = "wss://" + TESTIP + ":10001"
-	//TESTIP  = "open-im-test.rentsoft.cn"
-	//APIADDR = "https://" + TESTIP + ":50002"
+	APIADDR = "http://" + TESTIP + ":10002"
 
-	WSADDR              = "wss://" + TESTIP + ":10001"
+	WSADDR              = "ws://" + TESTIP + ":10001"
 	REGISTERADDR        = APIADDR + "/auth/user_register"
 	TOKENADDR           = APIADDR + "/auth/user_token"
-	SECRET              = "openIM123"
+	SECRET              = "tuoyuntuoyun"
 	SENDINTERVAL        = 20
 	GETSELFUSERINFO     = APIADDR + "/user/get_self_user_info"
 	CREATEGROUP         = APIADDR + constant.CreateGroupRouter

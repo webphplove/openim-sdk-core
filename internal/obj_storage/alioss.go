@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	comm "open_im_sdk/internal/common"
 	"open_im_sdk/pkg/constant"
 	"open_im_sdk/pkg/log"
 
 	"math/rand"
-	ws "open_im_sdk/internal/interaction"
 	//	"open_im_sdk/pkg/constant"
 	"open_im_sdk/pkg/server_api_params"
 	"open_im_sdk/pkg/utils"
@@ -19,7 +19,7 @@ import (
 
 // OSS 阿里云对象存储
 type OSS struct {
-	p *ws.PostApi
+	p *comm.PostApi
 }
 
 func (c *OSS) UploadImageByBuffer(buffer *bytes.Buffer, size int64, imageType string, onProgressFun func(int)) (string, string, error) {
@@ -38,7 +38,7 @@ func (c *OSS) UploadVideoByBuffer(videoBuffer, snapshotBuffer *bytes.Buffer, vid
 	panic("implement me")
 }
 
-func NewOSS(p *ws.PostApi) *OSS {
+func NewOSS(p *comm.PostApi) *OSS {
 	return &OSS{p: p}
 }
 

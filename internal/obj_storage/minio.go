@@ -10,7 +10,7 @@ import (
 	"math/rand"
 	"net/url"
 	_ "net/url"
-	ws "open_im_sdk/internal/interaction"
+	comm "open_im_sdk/internal/common"
 	"open_im_sdk/pkg/constant"
 	"open_im_sdk/pkg/log"
 	"open_im_sdk/pkg/server_api_params"
@@ -21,7 +21,7 @@ import (
 )
 
 type Minio struct {
-	p *ws.PostApi
+	p *comm.PostApi
 }
 
 func (m *Minio) UploadImageByBuffer(buffer *bytes.Buffer, size int64, imageType string, onProgressFun func(int)) (string, string, error) {
@@ -40,7 +40,7 @@ func (m *Minio) UploadVideoByBuffer(videoBuffer, snapshotBuffer *bytes.Buffer, v
 	panic("implement me")
 }
 
-func NewMinio(p *ws.PostApi) *Minio {
+func NewMinio(p *comm.PostApi) *Minio {
 	return &Minio{p: p}
 }
 
@@ -81,9 +81,9 @@ func (m *Minio) upload(filePath, fileType string, onProgressFun func(int)) (stri
 	case "https":
 		opts.Secure = true
 	}
-	client, err := minio.New(endPoint.Host, opts)
+	client, err := minio.New(minioResp.StsEndpointURL, opts)
 	if err != nil {
-		log.NewError("", utils.GetSelfFuncName(), "generate filename and filetype failed", err.Error(), endPoint.Host)
+		log.NewError("", utils.GetSelfFuncName(), "generate filename and filetype failed", err.Error(), endPoint.Host, " url: ", minioResp.StsEndpointURL)
 		return "", "", utils.Wrap(err, "")
 	}
 	fi, err := os.Stat(filePath)

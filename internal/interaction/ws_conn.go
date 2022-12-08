@@ -22,18 +22,19 @@ import (
 const writeTimeoutSeconds = 30
 
 type WsConn struct {
-	stateMutex     sync.Mutex
-	conn           *websocket.Conn
-	loginStatus    int32
-	listener       open_im_sdk_callback.OnConnListener
-	token          string
-	loginUserID    string
-	IsCompression  bool
-	ConversationCh chan common.Cmd2Value
+	stateMutex         sync.Mutex
+	conn               *websocket.Conn
+	loginStatus        int32
+	listener           open_im_sdk_callback.OnConnListener
+	token              string
+	loginUserID        string
+	IsCompression      bool
+	ConversationCh     chan common.Cmd2Value
+	pushMsgAndMaxSeqCh chan common.Cmd2Value
 }
 
-func NewWsConn(listener open_im_sdk_callback.OnConnListener, token string, loginUserID string, isCompression bool, conversationCh chan common.Cmd2Value) *WsConn {
-	p := WsConn{listener: listener, token: token, loginUserID: loginUserID, IsCompression: isCompression, ConversationCh: conversationCh}
+func NewWsConn(listener open_im_sdk_callback.OnConnListener, token string, loginUserID string, isCompression bool, conversationCh chan common.Cmd2Value, pushMsgAndMaxSeqCh chan common.Cmd2Value) *WsConn {
+	p := WsConn{listener: listener, token: token, loginUserID: loginUserID, IsCompression: isCompression, ConversationCh: conversationCh, pushMsgAndMaxSeqCh: pushMsgAndMaxSeqCh}
 	//	go func() {
 	p.conn, _, _, _ = p.ReConn("init:" + utils.OperationIDGenerator())
 	//	}()
@@ -193,6 +194,7 @@ func (u *WsConn) ReConn(operationID string) (*websocket.Conn, error, bool, bool)
 			errMsg := httpResp.Header.Get("ws_err_msg") + " operationID " + operationID + err.Error()
 			log.Error(operationID, "websocket.DefaultDialer.Dial failed ", errMsg, httpResp.StatusCode)
 			u.listener.OnConnectFailed(int32(httpResp.StatusCode), errMsg)
+			common.TriggerCmdConnectFailed(u.pushMsgAndMaxSeqCh)
 			switch int32(httpResp.StatusCode) {
 			case constant.ErrTokenExpired.ErrCode:
 				u.listener.OnUserTokenExpired()
@@ -219,11 +221,13 @@ func (u *WsConn) ReConn(operationID string) (*websocket.Conn, error, bool, bool)
 			default:
 				errMsg = err.Error() + " operationID " + operationID
 				u.listener.OnConnectFailed(1001, errMsg)
+				common.TriggerCmdConnectFailed(u.pushMsgAndMaxSeqCh)
 				return nil, utils.Wrap(err, errMsg), true, false
 			}
 		} else {
 			errMsg := err.Error() + " operationID " + operationID
 			u.listener.OnConnectFailed(1001, errMsg)
+			common.TriggerCmdConnectFailed(u.pushMsgAndMaxSeqCh)
 			if u.ConversationCh != nil {
 				common.TriggerCmdSuperGroupMsgCome(sdk_struct.CmdNewMsgComeToConversation{MsgList: nil, OperationID: operationID, SyncFlag: constant.MsgSyncBegin}, u.ConversationCh)
 				common.TriggerCmdSuperGroupMsgCome(sdk_struct.CmdNewMsgComeToConversation{MsgList: nil, OperationID: operationID, SyncFlag: constant.MsgSyncFailed}, u.ConversationCh)
@@ -234,6 +238,7 @@ func (u *WsConn) ReConn(operationID string) (*websocket.Conn, error, bool, bool)
 		}
 	}
 	u.listener.OnConnectSuccess()
+	common.TriggerCmdConnectSuccess(u.pushMsgAndMaxSeqCh)
 	u.loginStatus = constant.LoginSuccess
 	u.conn = conn
 	return conn, nil, true, false

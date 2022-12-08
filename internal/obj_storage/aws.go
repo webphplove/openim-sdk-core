@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	ws "open_im_sdk/internal/interaction"
+	comm "open_im_sdk/internal/common"
 	"open_im_sdk/pkg/constant"
 	"open_im_sdk/pkg/log"
 	"open_im_sdk/pkg/server_api_params"
@@ -22,7 +22,7 @@ import (
 )
 
 type AWS struct {
-	p *ws.PostApi
+	p *comm.PostApi
 }
 
 func (m *AWS) UploadImageByBuffer(buffer *bytes.Buffer, size int64, imageType string, onProgressFun func(int)) (string, string, error) {
@@ -41,7 +41,7 @@ func (m *AWS) UploadVideoByBuffer(videoBuffer, snapshotBuffer *bytes.Buffer, vid
 	panic("implement me")
 }
 
-func NewAWS(p *ws.PostApi) *AWS {
+func NewAWS(p *comm.PostApi) *AWS {
 	return &AWS{p: p}
 }
 

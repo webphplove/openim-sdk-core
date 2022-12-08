@@ -424,7 +424,7 @@ func InOutLogou() {
 func InOutDoTest(uid, tk, ws, api string) {
 	var cf sdk_struct.IMConfig
 	cf.ApiAddr = api
-	cf.Platform = 1
+	cf.Platform = PlatformID
 	cf.WsAddr = ws
 	cf.DataDir = "./"
 	cf.LogLevel = LogLevel
@@ -676,9 +676,12 @@ func (t *TestSendMsgCallBack) OnSuccess(data string) {
 	log.Info(t.OperationID, "test_openim: send msg success: |", t.msgID, t.msg, data)
 	SendMsgMapLock.Lock()
 	defer SendMsgMapLock.Unlock()
-	//k, _ := SendSuccAllMsg[t.msgID]
-	//k.SendSeccCallbackTime = utils.GetCurrentTimestampByMill()
-	//k.SendIDRecvID = t.sendID + t.recvID
+	k, _ := SendSuccAllMsg[t.msgID]
+	if k != nil {
+		k.SendSeccCallbackTime = utils.GetCurrentTimestampByMill()
+		k.SendIDRecvID = t.sendID + t.recvID
+	}
+
 }
 
 func (t *TestSendMsgCallBack) OnProgress(progress int) {
