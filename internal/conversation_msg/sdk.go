@@ -333,6 +333,7 @@ func (c *Conversation) updateMsgStatusAndTriggerConversation(ctx context.Context
 	_ = common.TriggerCmdUpdateConversation(common.UpdateConNode{ConID: lc.ConversationID, Action: constant.AddConOrUpLatMsg, Args: *lc}, c.GetCh())
 
 }
+
 func (c *Conversation) SendMessage(ctx context.Context, s *sdk_struct.MsgStruct, recvID, groupID string, p *sdkws.OfflinePushInfo) (*sdk_struct.MsgStruct, error) {
 	s.SendID = c.loginUserID
 	s.SenderPlatformID = c.platformID
@@ -533,6 +534,7 @@ func (c *Conversation) SendMessage(ctx context.Context, s *sdk_struct.MsgStruct,
 	return c.sendMessageToServer(ctx, s, lc, callback, delFile, p, options)
 
 }
+
 func (c *Conversation) SendMessageNotOss(ctx context.Context, s *sdk_struct.MsgStruct, recvID, groupID string, p *sdkws.OfflinePushInfo) (*sdk_struct.MsgStruct, error) {
 
 	s.SendID = c.loginUserID

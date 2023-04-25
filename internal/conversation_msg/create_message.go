@@ -10,15 +10,18 @@ import (
 	"os"
 )
 
+// CreateTextMessage create text message
 func (c *Conversation) CreateTextMessage(ctx context.Context, text string) (*sdk_struct.MsgStruct, error) {
 	s := sdk_struct.MsgStruct{}
 	err := c.initBasicInfo(ctx, &s, constant.UserMsgType, constant.Text)
 	if err != nil {
 		return nil, err
 	}
-	s.Content = text
+	s.TextElem.Text = text
 	return &s, nil
 }
+
+// createAdvancedTextMessage create advanced text message
 func (c *Conversation) CreateAdvancedTextMessage(ctx context.Context, text string, messageEntities []*sdk_struct.MessageEntity) (*sdk_struct.MsgStruct, error) {
 	s := sdk_struct.MsgStruct{}
 	err := c.initBasicInfo(ctx, &s, constant.UserMsgType, constant.AdvancedText)
@@ -30,6 +33,7 @@ func (c *Conversation) CreateAdvancedTextMessage(ctx context.Context, text strin
 	s.Content = utils.StructToJsonString(s.MessageEntityElem)
 	return &s, nil
 }
+
 func (c *Conversation) messageEntity(ctx context.Context, text string, messageEntity []*sdk_struct.MessageEntity) (*sdk_struct.MsgStruct, error) {
 	s := sdk_struct.MsgStruct{}
 	err := c.initBasicInfo(ctx, &s, constant.UserMsgType, constant.AdvancedText)

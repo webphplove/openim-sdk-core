@@ -83,6 +83,10 @@ type FileBaseInfo struct {
 	FileType  string `json:"fileType,omitempty"`
 }
 
+type TextElem struct {
+	Text string `json:"text,omitempty"`
+}
+
 type MsgStruct struct {
 	ClientMsgID          string                `json:"clientMsgID,omitempty"`
 	ServerMsgID          string                `json:"serverMsgID,omitempty"`
@@ -106,6 +110,7 @@ type MsgStruct struct {
 	OfflinePush          sdkws.OfflinePushInfo `json:"offlinePush,omitempty"`
 	AttachedInfo         string                `json:"attachedInfo,omitempty"`
 	Ex                   string                `json:"ex,omitempty"`
+	TextElem             TextElem              `json:"textElem,omitempty"`
 	PictureElem          struct {
 		SourcePath      string          `json:"sourcePath,omitempty"`
 		SourcePicture   PictureBaseInfo `json:"sourcePicture,omitempty"`
