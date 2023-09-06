@@ -1025,7 +1025,9 @@ func (c *Conversation) InsertSingleMessageToLocalStorage(ctx context.Context, s 
 	s.ClientMsgID = utils.GetMsgID(s.SendID)
 	s.SendTime = utils.GetCurrentTimestampByMill()
 	s.SessionType = constant.SingleChatType
-	s.Status = constant.MsgStatusSendSuccess
+	if s.Status == 0 {
+		s.Status = constant.MsgStatusSendSuccess
+	}
 	localMessage := c.msgStructToLocalChatLog(s)
 	conversation.LatestMsg = utils.StructToJsonString(s)
 	conversation.ConversationType = constant.SingleChatType
@@ -1065,7 +1067,9 @@ func (c *Conversation) InsertGroupMessageToLocalStorage(ctx context.Context, s *
 	s.ClientMsgID = utils.GetMsgID(s.SendID)
 	s.SendTime = utils.GetCurrentTimestampByMill()
 	s.SessionType = conversation.ConversationType
-	s.Status = constant.MsgStatusSendSuccess
+	if s.Status == 0 {
+		s.Status = constant.MsgStatusSendSuccess
+	}
 	localMessage := c.msgStructToLocalChatLog(s)
 	conversation.LatestMsg = utils.StructToJsonString(s)
 	conversation.LatestMsgSendTime = s.SendTime
